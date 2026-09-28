@@ -1,0 +1,28 @@
+[project]
+name = "vcut-workers"
+version = "0.1.0"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "pydantic==2.10.6",
+]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+src = ["apps", "tests"]
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I", "UP", "B", "ANN"]
+ignore = ["B008"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+disallow_any_generics = true
+warn_return_any = true
+warn_unused_ignores = true
+exclude = ["tests/python/negative/"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests/python"]
+addopts = "-q"
