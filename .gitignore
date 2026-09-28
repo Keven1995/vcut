@@ -23,6 +23,7 @@
 target/
 node_modules/
 .next/
+*.tsbuildinfo
 dist/
 build/
 __pycache__/

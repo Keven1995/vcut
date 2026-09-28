@@ -1,5 +1,8 @@
 package com.vcut.api.shared.health;
 
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import java.util.Map;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -18,11 +21,18 @@ public class HealthController {
   }
 
   @GetMapping("/live")
+  @Operation(summary = "Verifica se o processo está vivo")
+  @ApiResponse(responseCode = "200", description = "Processo disponível")
   public ResponseEntity<HealthResponse> live() {
     return ResponseEntity.ok(new HealthResponse("UP", Map.of()));
   }
 
   @GetMapping("/ready")
+  @Operation(summary = "Verifica se as dependências estão prontas")
+  @ApiResponses({
+    @ApiResponse(responseCode = "200", description = "Dependências disponíveis"),
+    @ApiResponse(responseCode = "503", description = "Uma ou mais dependências indisponíveis")
+  })
   public ResponseEntity<HealthResponse> ready() {
     Map<String, String> dependencies = dependencyReadiness.check();
     boolean available = dependencies.values().stream().allMatch("UP"::equals);
