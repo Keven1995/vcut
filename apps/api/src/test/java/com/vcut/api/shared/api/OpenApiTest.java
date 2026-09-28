@@ -24,10 +24,8 @@ class OpenApiTest {
         .perform(get("/v3/api-docs"))
         .andExpect(status().isOk())
         .andExpect(content().string(org.hamcrest.Matchers.containsString("/health/live")))
+        .andExpect(content().string(org.hamcrest.Matchers.containsString("/api/auth/login")))
         .andExpect(content().string(org.hamcrest.Matchers.containsString("ErrorResponse")))
-        .andExpect(
-            content()
-                .string(
-                    org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("/api/auth"))));
+        .andExpect(content().string(org.hamcrest.Matchers.containsString("/api/projects")));
   }
 }
