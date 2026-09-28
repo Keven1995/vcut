@@ -1,0 +1,41 @@
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
+.venv/
+
+# Build output and dependency caches
+target/
+node_modules/
+.next/
+dist/
+build/
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# IDE and operating-system files
+.idea/
+.vscode/
+*.iml
+.DS_Store
+Thumbs.db
+
+# Logs and generated media
+*.log
+tests/fixtures/generated/
+*.mp4
+*.mov
+*.wav
+*.mp3
+
+/docs/
+/openspec/
+/.opencode/
+/AGENTS.md
+/CONTRIBUTING.md
+/ENGINEERING_PATTERNS.md
+/ARCHITECTURE.md - Plataforma Inteligente de Cortes de Vídeo.md
+/.github/PULL_REQUEST_TEMPLATE.md
+/tests/fixtures/README.md
