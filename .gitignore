@@ -4,6 +4,21 @@
 !.env.example
 .venv/
 
+# Planning and local operational documentation
+/docs/
+/README.md
+/openspec/
+/.opencode/
+/AGENTS.md
+/CONTRIBUTING.md
+/ENGINEERING_PATTERNS.md
+/ARCHITECTURE.md — Plataforma Inteligente de Cortes de Vídeo.md
+/.github/PULL_REQUEST_TEMPLATE.md
+/tests/fixtures/README.md
+/apps/**/README.md
+/infrastructure/README.md
+/scripts/README.md
+
 # Build output and dependency caches
 target/
 node_modules/
@@ -14,6 +29,7 @@ __pycache__/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+*.egg-info/
 
 # IDE and operating-system files
 .idea/
@@ -29,13 +45,3 @@ tests/fixtures/generated/
 *.mov
 *.wav
 *.mp3
-
-/docs/
-/openspec/
-/.opencode/
-/AGENTS.md
-/CONTRIBUTING.md
-/ENGINEERING_PATTERNS.md
-/ARCHITECTURE.md - Plataforma Inteligente de Cortes de Vídeo.md
-/.github/PULL_REQUEST_TEMPLATE.md
-/tests/fixtures/README.md
