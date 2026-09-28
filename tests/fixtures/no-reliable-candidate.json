@@ -1,0 +1,22 @@
+{
+  "fixtureId": "no-reliable-candidate-v1",
+  "kind": "audio",
+  "durationSeconds": 8,
+  "container": "wav",
+  "audioCodec": "pcm_s16le",
+  "transcript": {
+    "language": "pt-BR",
+    "segments": [
+      {
+        "startSeconds": 1.2,
+        "endSeconds": 1.8,
+        "text": "...",
+        "confidence": 0.22
+      }
+    ]
+  },
+  "expected": {
+    "hasReliableCandidate": false,
+    "reason": "insufficient speech confidence and duration"
+  }
+}

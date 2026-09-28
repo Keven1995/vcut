@@ -1,0 +1,24 @@
+{
+  "fixtureId": "speech-timestamps-v1",
+  "language": "pt-BR",
+  "segments": [
+    {
+      "startSeconds": 0.4,
+      "endSeconds": 2.1,
+      "text": "Hoje vamos mostrar o resultado.",
+      "confidence": 0.96
+    },
+    {
+      "startSeconds": 2.4,
+      "endSeconds": 5.8,
+      "text": "A parte importante acontece neste momento.",
+      "confidence": 0.91
+    },
+    {
+      "startSeconds": 6.1,
+      "endSeconds": 7.4,
+      "text": "Até a próxima.",
+      "confidence": 0.88
+    }
+  ]
+}

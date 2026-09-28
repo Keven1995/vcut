@@ -1,0 +1,16 @@
+{
+  "fixtureId": "horizontal-video-v1",
+  "kind": "video",
+  "orientation": "horizontal",
+  "width": 1280,
+  "height": 720,
+  "durationSeconds": 8,
+  "container": "mp4",
+  "videoCodec": "h264",
+  "audioCodec": "aac",
+  "transcript": "speech-timestamps.json",
+  "expected": {
+    "hasReliableCandidate": true,
+    "aspectRatio": "16:9"
+  }
+}
