@@ -26,9 +26,12 @@ export default function HomePage() {
             devolver sugestoes publicaveis com controle humano.
           </p>
           <div className="hero-actions">
-            <button className="primary-action" type="button">
+            <Link className="primary-action" href="/register">
               Criar primeiro projeto
-            </button>
+            </Link>
+            <Link className="text-action" href="/login">
+              Entrar <span aria-hidden="true">-&gt;</span>
+            </Link>
             <a className="text-action" href="#workflow">
               Conhecer o fluxo <span aria-hidden="true">-&gt;</span>
             </a>
