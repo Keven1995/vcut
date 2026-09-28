@@ -35,6 +35,13 @@ info:
     version: ${project.version:0.1.0-SNAPSHOT}
 
 vcut:
+  auth:
+    jwt-secret: ${JWT_SECRET:}
+    access-token-ttl: ${JWT_ACCESS_TOKEN_TTL:15m}
+    refresh-token-ttl: ${JWT_REFRESH_TOKEN_TTL:30d}
+    refresh-cookie-secure: ${JWT_REFRESH_COOKIE_SECURE:false}
+  web:
+    allowed-origin: ${WEB_ORIGIN:http://localhost:3000}
   dependencies:
     postgres-host: ${POSTGRES_HOST:localhost}
     postgres-port: ${POSTGRES_PORT:5432}
