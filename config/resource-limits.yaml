@@ -1,0 +1,32 @@
+version: 1
+status: provisional
+
+upload:
+  maxFileSizeBytes: 536870912
+  maxDurationSeconds: 7200
+  acceptedVideoContainers:
+    - mp4
+    - mov
+    - webm
+  acceptedAudioContainers:
+    - wav
+    - mp3
+    - m4a
+
+retention:
+  originalMediaDays: 30
+  derivedMediaDays: 30
+  failedJobArtifactsDays: 7
+
+quotas:
+  free:
+    monthlyProcessingMinutes: 60
+    concurrentJobs: 1
+  pro:
+    monthlyProcessingMinutes: 600
+    concurrentJobs: 3
+
+processing:
+  maxClipDurationSeconds: 90
+  maxClipsPerRequest: 20
+  maxRetries: 3
