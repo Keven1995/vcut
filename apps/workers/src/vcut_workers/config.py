@@ -14,6 +14,12 @@ class WorkerSettings(BaseModel):
     postgres_port: int = Field(default=5432, ge=1, le=65535)
     rabbitmq_host: str = Field(default="localhost", min_length=1)
     rabbitmq_port: int = Field(default=5672, ge=1, le=65535)
+    storage_endpoint: str = Field(default="http://localhost:9000", min_length=1)
+    storage_region: str = Field(default="us-east-1", min_length=1)
+    storage_bucket: str = Field(default="vcut-local", min_length=1)
+    storage_access_key: str = Field(default="", min_length=0)
+    storage_secret_key: str = Field(default="", min_length=0)
+    storage_path_style: bool = True
     storage_health_url: str = Field(
         default="http://localhost:9000/minio/health/live", min_length=1
     )
@@ -29,6 +35,12 @@ class WorkerSettings(BaseModel):
             postgres_port=int(os.getenv("POSTGRES_PORT", "5432")),
             rabbitmq_host=os.getenv("RABBITMQ_HOST", "localhost"),
             rabbitmq_port=int(os.getenv("RABBITMQ_PORT", "5672")),
+            storage_endpoint=os.getenv("OBJECT_STORAGE_ENDPOINT", "http://localhost:9000"),
+            storage_region=os.getenv("OBJECT_STORAGE_REGION", "us-east-1"),
+            storage_bucket=os.getenv("OBJECT_STORAGE_BUCKET", "vcut-local"),
+            storage_access_key=os.getenv("OBJECT_STORAGE_ACCESS_KEY", ""),
+            storage_secret_key=os.getenv("OBJECT_STORAGE_SECRET_KEY", ""),
+            storage_path_style=os.getenv("OBJECT_STORAGE_PATH_STYLE", "true").lower() == "true",
             storage_health_url=os.getenv(
                 "OBJECT_STORAGE_HEALTH_URL", "http://localhost:9000/minio/health/live"
             ),
