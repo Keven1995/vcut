@@ -35,6 +35,21 @@ info:
     version: ${project.version:0.1.0-SNAPSHOT}
 
 vcut:
+  storage:
+    enabled: ${OBJECT_STORAGE_ENABLED:true}
+    endpoint: ${OBJECT_STORAGE_ENDPOINT:http://localhost:9000}
+    region: ${OBJECT_STORAGE_REGION:us-east-1}
+    bucket: ${OBJECT_STORAGE_BUCKET:vcut-local}
+    access-key: ${OBJECT_STORAGE_ACCESS_KEY:}
+    secret-key: ${OBJECT_STORAGE_SECRET_KEY:}
+    path-style-access: ${OBJECT_STORAGE_PATH_STYLE:true}
+    auto-create-bucket: ${OBJECT_STORAGE_AUTO_CREATE_BUCKET:true}
+    presigned-url-ttl: ${OBJECT_STORAGE_PRESIGNED_URL_TTL:15m}
+  upload:
+    max-file-size-bytes: ${UPLOAD_MAX_FILE_SIZE_BYTES:536870912}
+    max-duration-seconds: ${UPLOAD_MAX_DURATION_SECONDS:7200}
+    accepted-extensions: ${UPLOAD_ACCEPTED_EXTENSIONS:mp4,mov,webm}
+    accepted-content-types: ${UPLOAD_ACCEPTED_CONTENT_TYPES:video/mp4,video/quicktime,video/webm}
   auth:
     jwt-secret: ${JWT_SECRET:}
     access-token-ttl: ${JWT_ACCESS_TOKEN_TTL:15m}
