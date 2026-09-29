@@ -1,9 +1,9 @@
 from pathlib import Path
 from typing import Protocol, cast
 
-import boto3  # type: ignore[import-not-found]
-from botocore.config import Config  # type: ignore[import-not-found]
-from botocore.exceptions import ClientError  # type: ignore[import-not-found]
+import boto3
+from botocore.config import Config
+from botocore.exceptions import ClientError
 
 from vcut_workers.config import WorkerSettings
 from vcut_workers.domain.media import ObjectMetadata

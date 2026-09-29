@@ -26,6 +26,12 @@ class FakeProcessor:
     def __init__(self, metadata: VideoMetadata) -> None:
         self.metadata = metadata
 
+    def extract_audio(self, source: Path, destination: Path) -> None:
+        raise NotImplementedError
+
+    def cut(self, source: Path, destination: Path, start_seconds: float, end_seconds: float) -> None:
+        raise NotImplementedError
+
     def probe(self, source: Path) -> VideoMetadata:
         return self.metadata
 

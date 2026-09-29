@@ -106,7 +106,8 @@ class VideoApplicationServiceTest {
             100,
             NOW);
     Video uploaded = uploading.uploaded(100, "checksum", NOW.plusSeconds(1));
-    when(videoRepository.findByIdForUser(uploading.id(), USER_ID)).thenReturn(Optional.of(uploaded));
+    when(videoRepository.findByIdForUser(uploading.id(), USER_ID))
+        .thenReturn(Optional.of(uploaded));
 
     Video result = service.confirmUpload(USER_ID, uploading.id(), null);
 
