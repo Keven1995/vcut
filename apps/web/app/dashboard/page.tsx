@@ -125,11 +125,12 @@ export default function DashboardPage() {
           </div>
         ) : null}
         {projects.map((project) => (
-          <article className="project-card" key={project.id}>
+          <Link className="project-card" href={`/dashboard/projects/${project.id}`} key={project.id}>
             <span className="project-status">{project.status === "ACTIVE" ? "Ativo" : "Arquivado"}</span>
             <h2>{project.name}</h2>
             <p>Criado em {new Date(project.createdAt).toLocaleDateString("pt-BR")}</p>
-          </article>
+            <span className="project-open">Abrir projeto <span aria-hidden="true">↗</span></span>
+          </Link>
         ))}
       </section>
     </main>
