@@ -107,6 +107,69 @@ public record Video(
         now);
   }
 
+  public Video validating(Instant now) {
+    if (status != VideoUploadStatus.UPLOADED) {
+      throw new IllegalStateException("Only an uploaded video can be validated");
+    }
+    return new Video(
+        id,
+        userId,
+        projectId,
+        objectKey,
+        originalFilename,
+        declaredContentType,
+        declaredSizeBytes,
+        actualSizeBytes,
+        checksumSha256,
+        durationSeconds,
+        width,
+        height,
+        frameRate,
+        hasAudio,
+        VideoUploadStatus.VALIDATING,
+        null,
+        createdAt,
+        now);
+  }
+
+  public Video validated(
+      VideoUploadStatus validationStatus,
+      Long actualSize,
+      java.math.BigDecimal duration,
+      Integer videoWidth,
+      Integer videoHeight,
+      java.math.BigDecimal fps,
+      Boolean audio,
+      String validationFailureCode,
+      Instant now) {
+    if (status != VideoUploadStatus.VALIDATING) {
+      throw new IllegalStateException("Only a validating video can receive validation results");
+    }
+    if (validationStatus != VideoUploadStatus.READY
+        && validationStatus != VideoUploadStatus.REJECTED) {
+      throw new IllegalArgumentException("validationStatus must be READY or REJECTED");
+    }
+    return new Video(
+        id,
+        userId,
+        projectId,
+        objectKey,
+        originalFilename,
+        declaredContentType,
+        declaredSizeBytes,
+        actualSize,
+        checksumSha256,
+        duration,
+        videoWidth,
+        videoHeight,
+        fps,
+        audio,
+        validationStatus,
+        validationFailureCode,
+        createdAt,
+        now);
+  }
+
   private static void requireText(String value, String field) {
     if (value == null || value.isBlank()) {
       throw new IllegalArgumentException(field + " must not be blank");

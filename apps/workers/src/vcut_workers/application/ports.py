@@ -8,7 +8,9 @@ class VideoProcessor(Protocol):
     def extract_audio(self, source: Path, destination: Path) -> None:
         """Extract an audio track from a local media file."""
 
-    def cut(self, source: Path, destination: Path, start_seconds: float, end_seconds: float) -> None:
+    def cut(
+        self, source: Path, destination: Path, start_seconds: float, end_seconds: float
+    ) -> None:
         """Create a media clip for a valid time interval."""
 
     def probe(self, source: Path) -> VideoMetadata:

@@ -73,6 +73,28 @@ public class JdbcVideoRepository implements VideoRepository {
   }
 
   @Override
+  public boolean updateValidation(Video video, VideoUploadStatus expectedStatus) {
+    int updated =
+        jdbcTemplate.update(
+            "UPDATE videos SET actual_size_bytes = ?, duration_seconds = ?, width = ?, height = ?, "
+                + "frame_rate = ?, has_audio = ?, upload_status = ?, failure_code = ?, updated_at = ? "
+                + "WHERE id = ? AND user_id = ? AND upload_status = ?",
+            video.actualSizeBytes(),
+            video.durationSeconds(),
+            video.width(),
+            video.height(),
+            video.frameRate(),
+            video.hasAudio(),
+            video.status().name(),
+            video.failureCode(),
+            Timestamp.from(video.updatedAt()),
+            video.id(),
+            video.userId(),
+            expectedStatus.name());
+    return updated == 1;
+  }
+
+  @Override
   public void delete(UUID videoId, UUID userId) {
     jdbcTemplate.update("DELETE FROM videos WHERE id = ? AND user_id = ?", videoId, userId);
   }

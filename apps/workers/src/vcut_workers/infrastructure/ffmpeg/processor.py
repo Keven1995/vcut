@@ -28,7 +28,9 @@ class FFmpegVideoProcessor:
             ]
         )
 
-    def cut(self, source: Path, destination: Path, start_seconds: float, end_seconds: float) -> None:
+    def cut(
+        self, source: Path, destination: Path, start_seconds: float, end_seconds: float
+    ) -> None:
         if start_seconds < 0 or end_seconds <= start_seconds:
             raise ValueError("end_seconds must be greater than start_seconds")
         self._run(
@@ -65,10 +67,14 @@ class FFmpegVideoProcessor:
         )
         payload = json.loads(completed.stdout)
         streams = payload.get("streams", [])
-        video_stream = next((stream for stream in streams if stream.get("codec_type") == "video"), None)
+        video_stream = next(
+            (stream for stream in streams if stream.get("codec_type") == "video"), None
+        )
         if video_stream is None:
             raise ValueError("media does not contain a video stream")
-        audio_stream = next((stream for stream in streams if stream.get("codec_type") == "audio"), None)
+        audio_stream = next(
+            (stream for stream in streams if stream.get("codec_type") == "audio"), None
+        )
         format_payload = payload.get("format", {})
         format_name = _normalize_container(str(format_payload.get("format_name", "")))
         return VideoMetadata(

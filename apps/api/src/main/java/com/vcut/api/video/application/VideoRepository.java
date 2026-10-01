@@ -13,5 +13,7 @@ public interface VideoRepository {
 
   boolean updateIfStatus(Video video, VideoUploadStatus expectedStatus);
 
+  boolean updateValidation(Video video, VideoUploadStatus expectedStatus);
+
   void delete(UUID videoId, UUID userId);
 }

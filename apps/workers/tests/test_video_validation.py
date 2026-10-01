@@ -29,7 +29,9 @@ class FakeProcessor:
     def extract_audio(self, source: Path, destination: Path) -> None:
         raise NotImplementedError
 
-    def cut(self, source: Path, destination: Path, start_seconds: float, end_seconds: float) -> None:
+    def cut(
+        self, source: Path, destination: Path, start_seconds: float, end_seconds: float
+    ) -> None:
         raise NotImplementedError
 
     def probe(self, source: Path) -> VideoMetadata:
@@ -90,7 +92,8 @@ def test_validation_rejects_size_mismatch_before_probe() -> None:
 def test_validation_rejects_declared_mime_that_does_not_match_container() -> None:
     storage = FakeStorage(ObjectMetadata(command("video/webm").object_key, 5, "video/webm"))
     result = ValidateUploadedVideoUseCase(
-        storage, FakeProcessor(metadata()),
+        storage,
+        FakeProcessor(metadata()),
     ).execute(command("video/webm"))
 
     assert result.status == "REJECTED"
@@ -99,9 +102,9 @@ def test_validation_rejects_declared_mime_that_does_not_match_container() -> Non
 
 def test_validation_rejects_unsupported_codec() -> None:
     storage = FakeStorage(ObjectMetadata(command().object_key, 5, "video/mp4"))
-    result = ValidateUploadedVideoUseCase(storage, FakeProcessor(metadata(video_codec="mpeg4"))).execute(
-        command()
-    )
+    result = ValidateUploadedVideoUseCase(
+        storage, FakeProcessor(metadata(video_codec="mpeg4"))
+    ).execute(command())
 
     assert result.status == "REJECTED"
     assert result.failure_code == "VIDEO_CODEC_NOT_SUPPORTED"
@@ -109,7 +112,9 @@ def test_validation_rejects_unsupported_codec() -> None:
 
 def test_validation_rejects_invalid_resolution() -> None:
     storage = FakeStorage(ObjectMetadata(command().object_key, 5, "video/mp4"))
-    result = ValidateUploadedVideoUseCase(storage, FakeProcessor(metadata(width=8_000))).execute(command())
+    result = ValidateUploadedVideoUseCase(storage, FakeProcessor(metadata(width=8_000))).execute(
+        command()
+    )
 
     assert result.status == "REJECTED"
     assert result.failure_code == "RESOLUTION_NOT_SUPPORTED"
@@ -118,7 +123,8 @@ def test_validation_rejects_invalid_resolution() -> None:
 def test_validation_rejects_audio_stream_without_codec() -> None:
     storage = FakeStorage(ObjectMetadata(command().object_key, 5, "video/mp4"))
     result = ValidateUploadedVideoUseCase(
-        storage, FakeProcessor(metadata(audio_codec=None)),
+        storage,
+        FakeProcessor(metadata(audio_codec=None)),
     ).execute(command())
 
     assert result.status == "REJECTED"
