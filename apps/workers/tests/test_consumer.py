@@ -5,7 +5,7 @@ from typing import cast
 from uuid import UUID
 
 import pytest
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 
 from vcut_workers.config import WorkerSettings
 from vcut_workers.contracts import (
@@ -67,10 +67,8 @@ class FakeResultPublisher:
         self.results: list[VideoValidationResult] = []
         self.events = events
 
-    async def publish_result(
-        self, envelope: MessageEnvelope, result: VideoValidationResult
-    ) -> None:
-        self.results.append(result)
+    async def publish_result(self, envelope: MessageEnvelope, result: BaseModel) -> None:
+        self.results.append(VideoValidationResult.model_validate(result))
         if self.events is not None:
             self.events.append("result")
 
@@ -211,7 +209,9 @@ def test_pika_publishes_stage_updates_as_versioned_events() -> None:
 
     asyncio.run(publisher.update(update))
 
-    envelope = MessageEnvelope.model_validate_json(channel.published[0]["body"])
+    body = channel.published[0]["body"]
+    assert isinstance(body, bytes)
+    envelope = MessageEnvelope.model_validate_json(body)
     assert envelope.event_type == "StageRunUpdated"
     assert envelope.data == {"status": "PROCESSING", "attempt": 1, "progress": 25}
 

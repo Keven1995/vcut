@@ -83,7 +83,10 @@ class JobApplicationServiceTest {
     assertThat(job.videoId()).isEqualTo(VIDEO_ID);
     verify(pipelineRepository).save(any(Pipeline.class));
     verify(jobRepository).save(job);
-    verify(stageRunRepository).save(any(StageRun.class));
+    var stageCaptor = org.mockito.ArgumentCaptor.forClass(StageRun.class);
+    verify(stageRunRepository).save(stageCaptor.capture());
+    assertThat(stageCaptor.getValue().pipelineVersion()).isEqualTo(job.version());
+    assertThat(stageCaptor.getValue().inputPayload()).contains(job.id().toString());
     var captor = org.mockito.ArgumentCaptor.forClass(OutboxMessage.class);
     verify(outboxRepository).save(captor.capture());
     MessageEnvelope envelope =

@@ -9,6 +9,9 @@ def test_settings_are_loaded_from_environment(monkeypatch: MonkeyPatch) -> None:
     monkeypatch.setenv("APP_ENV", "test")
     monkeypatch.setenv("WORKER_NAME", "worker-test")
     monkeypatch.setenv("FFMPEG_BINARY", "ffmpeg-test")
+    monkeypatch.setenv("FFMPEG_TIMEOUT_SECONDS", "120")
+    monkeypatch.setenv("FFMPEG_MAX_TEMP_BYTES", "1000000")
+    monkeypatch.setenv("FFMPEG_MAX_MEMORY_BYTES", "2000000")
     monkeypatch.setenv("POSTGRES_DB", "vcut-test")
     monkeypatch.setenv("POSTGRES_USER", "worker-test")
     monkeypatch.setenv("POSTGRES_PASSWORD", "worker-secret")
@@ -18,6 +21,9 @@ def test_settings_are_loaded_from_environment(monkeypatch: MonkeyPatch) -> None:
     assert settings.environment == "test"
     assert settings.worker_name == "worker-test"
     assert settings.ffmpeg_binary == "ffmpeg-test"
+    assert settings.ffmpeg_timeout_seconds == 120
+    assert settings.ffmpeg_max_temp_bytes == 1_000_000
+    assert settings.ffmpeg_max_memory_bytes == 2_000_000
     assert settings.postgres_database == "vcut-test"
     assert settings.postgres_username == "worker-test"
     assert settings.postgres_password == "worker-secret"

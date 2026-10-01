@@ -51,6 +51,23 @@ class VideoMetadata:
 
 
 @dataclass(frozen=True)
+class AudioMetadata:
+    format: str
+    duration_seconds: float
+    sample_rate: int
+    channels: int
+    codec: str
+
+    def __post_init__(self) -> None:
+        if not self.format or not self.codec:
+            raise ValueError("format and codec must not be empty")
+        if self.duration_seconds < 0:
+            raise ValueError("duration_seconds must not be negative")
+        if self.sample_rate <= 0 or self.channels <= 0:
+            raise ValueError("sample_rate and channels must be positive")
+
+
+@dataclass(frozen=True)
 class VisionSignal:
     kind: str
     timestamp_seconds: float

@@ -1,13 +1,16 @@
 from pathlib import Path
 from typing import Protocol
 
-from vcut_workers.domain.media import ObjectMetadata, VideoAsset, VideoMetadata, VisionSignal
+from vcut_workers.domain.media import (
+    AudioMetadata,
+    ObjectMetadata,
+    VideoAsset,
+    VideoMetadata,
+    VisionSignal,
+)
 
 
 class VideoProcessor(Protocol):
-    def extract_audio(self, source: Path, destination: Path) -> None:
-        """Extract an audio track from a local media file."""
-
     def cut(
         self, source: Path, destination: Path, start_seconds: float, end_seconds: float
     ) -> None:
@@ -15,6 +18,54 @@ class VideoProcessor(Protocol):
 
     def probe(self, source: Path) -> VideoMetadata:
         """Read authoritative metadata from a local media file."""
+
+
+class MediaProcessor(VideoProcessor, Protocol):
+    def normalize(
+        self,
+        source: Path,
+        destination: Path,
+        *,
+        target_fps: float,
+        video_codec: str,
+        audio_codec: str,
+    ) -> VideoMetadata:
+        """Normalize a source into the pipeline media contract."""
+
+    def extract_audio(
+        self,
+        source: Path,
+        destination: Path,
+        *,
+        sample_rate: int,
+        channels: int,
+    ) -> AudioMetadata:
+        """Extract reusable mono audio for a transcription provider."""
+
+    def probe_audio(self, source: Path) -> AudioMetadata:
+        """Read authoritative audio metadata."""
+
+    def thumbnail(
+        self,
+        source: Path,
+        destination: Path,
+        *,
+        timestamp_seconds: float,
+        width: int,
+        height: int,
+    ) -> None:
+        """Extract one deterministic thumbnail frame."""
+
+    def sample_frames(
+        self,
+        source: Path,
+        destination_directory: Path,
+        *,
+        timestamps_seconds: tuple[float, ...],
+        width: int,
+        height: int,
+    ) -> tuple[Path, ...]:
+        """Extract deterministic inspection frames."""
 
 
 class ObjectStorage(Protocol):
@@ -26,6 +77,11 @@ class ObjectStorage(Protocol):
 
     def download(self, object_key: str, destination: Path) -> None:
         """Download an object to a local temporary path."""
+
+
+class WritableObjectStorage(ObjectStorage, Protocol):
+    def upload(self, source: Path, object_key: str, content_type: str) -> ObjectMetadata:
+        """Upload a local artifact and return its stored metadata."""
 
 
 class VisionAnalyzer(Protocol):

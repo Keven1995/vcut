@@ -109,8 +109,8 @@ class JobPersistenceIntegrationTest {
         now,
         now);
     jdbc.update(
-        "INSERT INTO stage_runs (id, job_id, stage_name, status, attempt, progress, input_payload, created_at, updated_at) "
-            + "VALUES (?, ?, 'INGEST', 'QUEUED', 1, 0, ?, ?, ?)",
+        "INSERT INTO stage_runs (id, job_id, pipeline_version, stage_name, status, attempt, progress, input_payload, created_at, updated_at) "
+            + "VALUES (?, ?, 1, 'INGEST', 'QUEUED', 1, 0, ?, ?, ?)",
         stageId,
         jobId,
         "{\"jobId\":\"" + jobId + "\"}",
@@ -127,7 +127,7 @@ class JobPersistenceIntegrationTest {
 
     Map<String, Object> row =
         jdbc.queryForMap(
-            "SELECT p.correlation_id, j.status AS job_status, s.status AS stage_status, o.published_at "
+            "SELECT p.correlation_id, j.status AS job_status, s.status AS stage_status, s.pipeline_version, o.published_at "
                 + "FROM pipelines p JOIN jobs j ON j.pipeline_id = p.id "
                 + "JOIN stage_runs s ON s.job_id = j.id "
                 + "JOIN outbox_messages o ON o.aggregate_id = j.id WHERE j.id = ?",
@@ -136,6 +136,7 @@ class JobPersistenceIntegrationTest {
     assertThat(row.get("correlation_id")).isEqualTo(correlationId);
     assertThat(row.get("job_status")).isEqualTo("QUEUED");
     assertThat(row.get("stage_status")).isEqualTo("QUEUED");
+    assertThat(row.get("pipeline_version")).isEqualTo(1);
     assertThat(row.get("published_at")).isNull();
   }
 }

@@ -7,6 +7,7 @@ import java.util.UUID;
 public record StageRun(
     UUID id,
     UUID jobId,
+    int pipelineVersion,
     String stageName,
     StageRunStatus status,
     int attempt,
@@ -27,18 +28,24 @@ public record StageRun(
       throw new IllegalArgumentException("stageName must not be blank");
     }
     Objects.requireNonNull(status, "status");
-    if (attempt < 1 || progress < 0 || progress > 100) {
-      throw new IllegalArgumentException("invalid stage run attempt or progress");
+    if (pipelineVersion < 1 || attempt < 1 || progress < 0 || progress > 100) {
+      throw new IllegalArgumentException("invalid stage run version, attempt or progress");
     }
     Objects.requireNonNull(createdAt, "createdAt");
     Objects.requireNonNull(updatedAt, "updatedAt");
   }
 
   public static StageRun queued(
-      UUID id, UUID jobId, String stageName, String inputPayload, Instant now) {
+      UUID id,
+      UUID jobId,
+      int pipelineVersion,
+      String stageName,
+      String inputPayload,
+      Instant now) {
     return new StageRun(
         id,
         jobId,
+        pipelineVersion,
         stageName,
         StageRunStatus.QUEUED,
         1,

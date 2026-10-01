@@ -21,10 +21,11 @@ public class JdbcStageRunRepository implements StageRunRepository {
   @Override
   public StageRun save(StageRun stageRun) {
     jdbcTemplate.update(
-        "INSERT INTO stage_runs (id, job_id, stage_name, status, attempt, progress, input_payload, output_payload, "
-            + "error_code, error_message, started_at, finished_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO stage_runs (id, job_id, pipeline_version, stage_name, status, attempt, progress, input_payload, output_payload, "
+            + "error_code, error_message, started_at, finished_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         stageRun.id(),
         stageRun.jobId(),
+        stageRun.pipelineVersion(),
         stageRun.stageName(),
         stageRun.status().name(),
         stageRun.attempt(),

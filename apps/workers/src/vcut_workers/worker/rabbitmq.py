@@ -18,7 +18,10 @@ from vcut_workers.contracts.messaging import (
     StageRunUpdate,
 )
 from vcut_workers.contracts.video_validation import ValidateVideoCommand, VideoValidationResult
-from vcut_workers.infrastructure.ffmpeg.processor import FFmpegVideoProcessor
+from vcut_workers.infrastructure.ffmpeg.processor import (
+    FFmpegExecutionLimits,
+    FFmpegVideoProcessor,
+)
 from vcut_workers.infrastructure.persistence.idempotency import PostgresIdempotencyStore
 from vcut_workers.infrastructure.storage.s3 import S3ObjectStorage
 from vcut_workers.worker.consumer import (
@@ -215,7 +218,14 @@ class RabbitMqWorker:
 
 def create_video_validation_worker(settings: WorkerSettings) -> RabbitMqWorker:
     storage = S3ObjectStorage(settings)
-    processor = FFmpegVideoProcessor(settings.ffmpeg_binary)
+    processor = FFmpegVideoProcessor(
+        settings.ffmpeg_binary,
+        execution_limits=FFmpegExecutionLimits(
+            timeout_seconds=settings.ffmpeg_timeout_seconds,
+            max_temp_bytes=settings.ffmpeg_max_temp_bytes,
+            max_memory_bytes=settings.ffmpeg_max_memory_bytes,
+        ),
+    )
     use_case = ValidateUploadedVideoUseCase(storage, processor)
     return RabbitMqWorker(settings, use_case.execute)
 

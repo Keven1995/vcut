@@ -122,7 +122,8 @@ public class JobApplicationService {
             now,
             commandData);
     String commandPayload = serialize(command);
-    StageRun stageRun = StageRun.queued(UUID.randomUUID(), job.id(), STAGE, commandPayload, now);
+    StageRun stageRun =
+        StageRun.queued(UUID.randomUUID(), job.id(), job.version(), STAGE, commandPayload, now);
     OutboxMessage outbox =
         new OutboxMessage(
             UUID.randomUUID(),

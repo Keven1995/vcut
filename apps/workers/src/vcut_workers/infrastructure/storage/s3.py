@@ -14,6 +14,15 @@ class S3Client(Protocol):
 
     def download_file(self, bucket: str, key: str, filename: str) -> None: ...
 
+    def upload_file(
+        self,
+        filename: str,
+        bucket: str,
+        key: str,
+        *,
+        ExtraArgs: dict[str, str],
+    ) -> None: ...
+
 
 class S3ObjectStorage:
     def __init__(self, settings: WorkerSettings) -> None:
@@ -55,6 +64,18 @@ class S3ObjectStorage:
 
     def download(self, object_key: str, destination: Path) -> None:
         self._client.download_file(self._bucket, object_key, str(destination))
+
+    def upload(self, source: Path, object_key: str, content_type: str) -> ObjectMetadata:
+        self._client.upload_file(
+            str(source),
+            self._bucket,
+            object_key,
+            ExtraArgs={"ContentType": content_type},
+        )
+        metadata = self.head(object_key)
+        if metadata is None:
+            raise RuntimeError("uploaded object was not available after upload")
+        return metadata
 
 
 def _is_not_found(exception: ClientError) -> bool:

@@ -1,10 +1,10 @@
-import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
 from pydantic import BaseModel, Field
 
+from vcut_workers.application.errors import MediaProcessingError
 from vcut_workers.application.ports import ObjectStorage, VideoProcessor
 from vcut_workers.contracts.video_validation import ValidateVideoCommand, VideoValidationResult
 from vcut_workers.domain.media import VideoMetadata
@@ -39,7 +39,7 @@ class ValidateUploadedVideoUseCase:
             self.object_storage.download(command.object_key, source)
             try:
                 metadata = self.video_processor.probe(source)
-            except (OSError, ValueError, subprocess.CalledProcessError):
+            except (OSError, ValueError, MediaProcessingError):
                 return self._rejected(command, object_metadata.content_length, "INVALID_MEDIA")
 
         failure_code = _validate_metadata(command, metadata, self.limits)

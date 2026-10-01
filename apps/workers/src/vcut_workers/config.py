@@ -9,6 +9,9 @@ class WorkerSettings(BaseModel):
     environment: str = Field(default="local", min_length=1)
     worker_name: str = Field(default="vcut-worker", min_length=1)
     ffmpeg_binary: str = Field(default="ffmpeg", min_length=1)
+    ffmpeg_timeout_seconds: float = Field(default=900, gt=0)
+    ffmpeg_max_temp_bytes: int = Field(default=4_294_967_296, gt=0)
+    ffmpeg_max_memory_bytes: int = Field(default=1_073_741_824, gt=0)
     health_port: int = Field(default=8090, ge=1, le=65535)
     postgres_host: str = Field(default="localhost", min_length=1)
     postgres_port: int = Field(default=5432, ge=1, le=65535)
@@ -45,6 +48,9 @@ class WorkerSettings(BaseModel):
             environment=os.getenv("APP_ENV", "local"),
             worker_name=os.getenv("WORKER_NAME", "vcut-worker"),
             ffmpeg_binary=os.getenv("FFMPEG_BINARY", "ffmpeg"),
+            ffmpeg_timeout_seconds=float(os.getenv("FFMPEG_TIMEOUT_SECONDS", "900")),
+            ffmpeg_max_temp_bytes=int(os.getenv("FFMPEG_MAX_TEMP_BYTES", "4294967296")),
+            ffmpeg_max_memory_bytes=int(os.getenv("FFMPEG_MAX_MEMORY_BYTES", "1073741824")),
             health_port=int(os.getenv("WORKER_HEALTH_PORT", "8090")),
             postgres_host=os.getenv("POSTGRES_HOST", "localhost"),
             postgres_port=int(os.getenv("POSTGRES_PORT", "5432")),
