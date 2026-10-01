@@ -2,19 +2,19 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { type ChangeEvent, type FormEvent, useRef, useState } from "react";
+import { type ChangeEvent, type FormEvent, useEffect, useRef, useState } from "react";
 import { apiRequest } from "../../../../lib/api-client";
 
 const MAX_UPLOAD_BYTES = 512 * 1024 * 1024;
 
-type UploadPhase = "idle" | "creating" | "uploading" | "confirming" | "ready" | "failed" | "cancelled";
+type UploadPhase = "idle" | "creating" | "uploading" | "confirming" | "ready" | "processing" | "failed" | "cancelled";
 
 type Video = {
   id: string;
   originalFilename: string;
   declaredSizeBytes: number;
   actualSizeBytes: number | null;
-  status: "UPLOADING" | "UPLOADED";
+  status: "UPLOADING" | "UPLOADED" | "VALIDATING" | "READY" | "REJECTED" | "FAILED";
   durationSeconds: number | null;
   width: number | null;
   height: number | null;
@@ -22,11 +22,24 @@ type Video = {
   uploadUrl?: string | null;
 };
 
+type JobStatus = "QUEUED" | "PROCESSING" | "COMPLETED" | "FAILED" | "CANCELLED";
+
+type Job = {
+  id: string;
+  videoId: string;
+  status: JobStatus;
+  stage: string;
+  progress: number;
+  errorCode: string | null;
+  errorMessage: string | null;
+};
+
 type UploadState = {
   phase: UploadPhase;
   progress: number;
   video: Video | null;
   error: string | null;
+  job: Job | null;
 };
 
 class UploadCancelledError extends Error {}
@@ -78,6 +91,8 @@ function phaseLabel(phase: UploadPhase): string {
       return "Confirmando o arquivo";
     case "ready":
       return "Arquivo pronto para processamento";
+    case "processing":
+      return "Processando o video em segundo plano";
     case "cancelled":
       return "Upload cancelado";
     default:
@@ -93,7 +108,16 @@ export default function ProjectUploadPage() {
   const fileRef = useRef<File | null>(null);
   const cancelledRef = useRef(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [state, setState] = useState<UploadState>({ phase: "idle", progress: 0, video: null, error: null });
+  const [state, setState] = useState<UploadState>({ phase: "idle", progress: 0, video: null, error: null, job: null });
+  const pollingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (pollingTimerRef.current) {
+        clearTimeout(pollingTimerRef.current);
+      }
+    };
+  }, []);
 
   function selectFile(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
@@ -102,19 +126,19 @@ export default function ProjectUploadPage() {
     }
     const isMp4 = file.type === "video/mp4" || file.name.toLowerCase().endsWith(".mp4");
     if (!isMp4) {
-      setState({ phase: "failed", progress: 0, video: null, error: "Escolha um arquivo MP4." });
+      setState({ phase: "failed", progress: 0, video: null, error: "Escolha um arquivo MP4.", job: null });
       setSelectedFile(null);
       return;
     }
     if (file.size <= 0 || file.size > MAX_UPLOAD_BYTES) {
-      setState({ phase: "failed", progress: 0, video: null, error: "O arquivo precisa ter entre 1 byte e 512 MB." });
+      setState({ phase: "failed", progress: 0, video: null, error: "O arquivo precisa ter entre 1 byte e 512 MB.", job: null });
       setSelectedFile(null);
       return;
     }
     setSelectedFile(file);
     fileRef.current = file;
     videoIdRef.current = null;
-    setState({ phase: "idle", progress: 0, video: null, error: null });
+    setState({ phase: "idle", progress: 0, video: null, error: null, job: null });
   }
 
   async function deleteVideo(videoId: string): Promise<void> {
@@ -127,7 +151,7 @@ export default function ProjectUploadPage() {
 
   async function startUpload(file: File): Promise<void> {
     cancelledRef.current = false;
-    setState({ phase: "creating", progress: 0, video: null, error: null });
+    setState({ phase: "creating", progress: 0, video: null, error: null, job: null });
     try {
       const intent = await apiRequest<Video>(`/api/projects/${params.projectId}/videos`, {
         method: "POST",
@@ -137,7 +161,7 @@ export default function ProjectUploadPage() {
         throw new Error("A API nao retornou uma URL de upload.");
       }
       videoIdRef.current = intent.id;
-      setState({ phase: "uploading", progress: 0, video: intent, error: null });
+      setState({ phase: "uploading", progress: 0, video: intent, error: null, job: null });
       const upload = uploadDirectly(file, intent.uploadUrl, (progress) => {
         setState((current) => ({ ...current, progress }));
       });
@@ -149,13 +173,48 @@ export default function ProjectUploadPage() {
         method: "POST",
         body: JSON.stringify({})
       });
-      setState({ phase: "ready", progress: 100, video: confirmed, error: null });
+      setState({ phase: "ready", progress: 100, video: confirmed, error: null, job: null });
     } catch (caught) {
       uploadRef.current = null;
       if (caught instanceof UploadCancelledError || cancelledRef.current) {
         return;
       }
       const message = caught instanceof Error ? caught.message : "Nao foi possivel concluir o upload.";
+      setState((current) => ({ ...current, phase: "failed", error: message }));
+    }
+  }
+
+  async function pollJob(jobId: string, attempt = 0): Promise<void> {
+    const job = parseJob(await apiRequest<unknown>(`/api/jobs/${jobId}`));
+    setState((current) => ({
+      ...current,
+      phase: job.status === "COMPLETED" ? "ready" : job.status === "FAILED" || job.status === "CANCELLED" ? "failed" : "processing",
+      progress: job.progress,
+      job,
+      error: job.errorMessage
+    }));
+    if (job.status === "COMPLETED" || job.status === "FAILED" || job.status === "CANCELLED") {
+      return;
+    }
+    const delay = Math.min(8_000, 1_000 * 2 ** Math.min(attempt, 3));
+    pollingTimerRef.current = setTimeout(() => {
+      void pollJob(jobId, attempt + 1).catch((caught: unknown) => {
+        const message = caught instanceof Error ? caught.message : "Nao foi possivel consultar o processamento.";
+        setState((current) => ({ ...current, phase: "failed", error: message }));
+      });
+    }, delay);
+  }
+
+  async function processVideo(): Promise<void> {
+    if (!state.video) {
+      return;
+    }
+    try {
+      const job = parseJob(await apiRequest<unknown>(`/api/videos/${state.video.id}/process`, { method: "POST" }));
+      setState((current) => ({ ...current, phase: "processing", progress: job.progress, job, error: null }));
+      await pollJob(job.id);
+    } catch (caught) {
+      const message = caught instanceof Error ? caught.message : "Nao foi possivel iniciar o processamento.";
       setState((current) => ({ ...current, phase: "failed", error: message }));
     }
   }
@@ -174,7 +233,7 @@ export default function ProjectUploadPage() {
     if (videoId) {
       void deleteVideo(videoId);
     }
-    setState((current) => ({ ...current, phase: "cancelled", error: null }));
+    setState((current) => ({ ...current, phase: "cancelled", error: null, job: null }));
   }
 
   async function retryUpload() {
@@ -188,7 +247,8 @@ export default function ProjectUploadPage() {
     await startUpload(fileRef.current);
   }
 
-  const isBusy = state.phase === "creating" || state.phase === "uploading" || state.phase === "confirming";
+  const isBusy = state.phase === "creating" || state.phase === "uploading" || state.phase === "confirming" || state.phase === "processing";
+  const isUploadBusy = state.phase === "creating" || state.phase === "uploading" || state.phase === "confirming";
 
   return (
     <main className="dashboard-shell upload-shell">
@@ -230,7 +290,7 @@ export default function ProjectUploadPage() {
               <span style={{ width: `${state.progress}%` }} />
             </div>
           ) : null}
-          {isBusy ? <button className="quiet-action upload-cancel" type="button" onClick={cancelUpload}>Cancelar</button> : null}
+          {isUploadBusy ? <button className="quiet-action upload-cancel" type="button" onClick={cancelUpload}>Cancelar</button> : null}
           {state.phase === "failed" ? (
             <div className="upload-failure">
               <p className="form-error" role="alert">{state.error}</p>
@@ -240,9 +300,17 @@ export default function ProjectUploadPage() {
           {state.phase === "cancelled" ? <p className="upload-note">Upload cancelado. O arquivo local continua selecionado.</p> : null}
           {state.phase === "ready" && state.video ? (
             <div className="video-ready">
-              <span className="project-status">Confirmado</span>
+              <span className="project-status">{state.job?.status === "COMPLETED" ? "Processado" : "Confirmado"}</span>
               <strong>{state.video.originalFilename}</strong>
-              <span>{formatBytes(state.video.actualSizeBytes ?? state.video.declaredSizeBytes)} / aguardando processamento</span>
+              <span>{formatBytes(state.video.actualSizeBytes ?? state.video.declaredSizeBytes)} / {state.job?.status === "COMPLETED" ? "validacao concluida" : "aguardando processamento"}</span>
+              {!state.job ? <button className="primary-action upload-submit" type="button" onClick={() => void processVideo()}>Processar video <span aria-hidden="true">↗</span></button> : null}
+            </div>
+          ) : null}
+          {state.phase === "processing" && state.job ? (
+            <div className="video-ready">
+              <span className="project-status">{state.job.stage}</span>
+              <strong>Processamento em andamento</strong>
+              <span>{state.job.progress}% / consultando o job com backoff</span>
             </div>
           ) : null}
         </div>
@@ -250,4 +318,28 @@ export default function ProjectUploadPage() {
       <p className="upload-footnote">O arquivo fica associado somente a este projeto e usuario. URLs assinadas expiram automaticamente.</p>
     </main>
   );
+}
+
+function parseJob(value: unknown): Job {
+  if (typeof value !== "object" || value === null) {
+    throw new Error("A API retornou um job invalido.");
+  }
+  const record = value as Record<string, unknown>;
+  const status = record.status;
+  if (typeof record.id !== "string" || typeof record.videoId !== "string" || typeof record.stage !== "string" || typeof record.progress !== "number" || !isJobStatus(status)) {
+    throw new Error("A API retornou um job invalido.");
+  }
+  return {
+    id: record.id,
+    videoId: record.videoId,
+    status,
+    stage: record.stage,
+    progress: record.progress,
+    errorCode: typeof record.errorCode === "string" ? record.errorCode : null,
+    errorMessage: typeof record.errorMessage === "string" ? record.errorMessage : null
+  };
+}
+
+function isJobStatus(value: unknown): value is JobStatus {
+  return value === "QUEUED" || value === "PROCESSING" || value === "COMPLETED" || value === "FAILED" || value === "CANCELLED";
 }
