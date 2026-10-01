@@ -7,7 +7,9 @@ from vcut_workers.contracts import MessageEnvelope
 
 
 def test_shared_event_fixture_round_trips_with_optional_fields() -> None:
-    fixture_path = Path(__file__).parents[3] / "tests" / "fixtures" / "events" / "video-uploaded-v1.json"
+    fixture_path = (
+        Path(__file__).parents[3] / "tests" / "fixtures" / "events" / "video-uploaded-v1.json"
+    )
     payload = json.loads(fixture_path.read_text(encoding="utf-8"))
 
     envelope = MessageEnvelope.model_validate(payload)

@@ -9,12 +9,18 @@ def test_settings_are_loaded_from_environment(monkeypatch: MonkeyPatch) -> None:
     monkeypatch.setenv("APP_ENV", "test")
     monkeypatch.setenv("WORKER_NAME", "worker-test")
     monkeypatch.setenv("FFMPEG_BINARY", "ffmpeg-test")
+    monkeypatch.setenv("POSTGRES_DB", "vcut-test")
+    monkeypatch.setenv("POSTGRES_USER", "worker-test")
+    monkeypatch.setenv("POSTGRES_PASSWORD", "worker-secret")
 
     settings = WorkerSettings.from_environment()
 
     assert settings.environment == "test"
     assert settings.worker_name == "worker-test"
     assert settings.ffmpeg_binary == "ffmpeg-test"
+    assert settings.postgres_database == "vcut-test"
+    assert settings.postgres_username == "worker-test"
+    assert settings.postgres_password == "worker-secret"
 
 
 def test_live_endpoint_does_not_require_dependencies() -> None:
