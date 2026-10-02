@@ -2,6 +2,8 @@ from pathlib import Path
 from typing import Protocol
 from uuid import UUID
 
+from vcut_workers.contracts.clip_analysis import AnalyzeClipsCommand
+from vcut_workers.domain.clip_analysis import AnalysisProviderResponse, SemanticSegment
 from vcut_workers.domain.media import (
     AudioMetadata,
     ObjectMetadata,
@@ -102,3 +104,12 @@ class TranscriptionResultStore(Protocol):
 
     def save(self, result: TranscriptionResult) -> TranscriptionResult:
         """Persist a result without replacing another result for the same version."""
+
+
+class ContentAnalyzer(Protocol):
+    def analyze(
+        self,
+        command: AnalyzeClipsCommand,
+        segments: tuple[SemanticSegment, ...],
+    ) -> AnalysisProviderResponse:
+        """Return untrusted semantic analysis output for boundary validation."""

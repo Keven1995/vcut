@@ -30,6 +30,9 @@ class WorkerSettings(BaseModel):
     rabbitmq_transcription_queue: str = Field(
         default="vcut.pipeline.commands.transcription", min_length=1
     )
+    rabbitmq_clip_analysis_queue: str = Field(
+        default="vcut.pipeline.commands.clip-analysis", min_length=1
+    )
     rabbitmq_command_exchange: str = Field(default="vcut.pipeline.commands", min_length=1)
     rabbitmq_retry_exchange: str = Field(default="vcut.pipeline.retry", min_length=1)
     rabbitmq_dead_letter_exchange: str = Field(default="vcut.pipeline.dlx", min_length=1)
@@ -39,6 +42,9 @@ class WorkerSettings(BaseModel):
     )
     rabbitmq_transcription_result_routing_key: str = Field(
         default="pipeline.video.transcription.completed", min_length=1
+    )
+    rabbitmq_clip_analysis_result_routing_key: str = Field(
+        default="pipeline.video.clip-analysis.completed", min_length=1
     )
     rabbitmq_enabled: bool = True
     storage_endpoint: str = Field(default="http://localhost:9000", min_length=1)
@@ -54,6 +60,7 @@ class WorkerSettings(BaseModel):
     whisper_compute_type: str = Field(default="int8", min_length=1)
     whisper_beam_size: int = Field(default=5, ge=1)
     transcription_language: str | None = None
+    content_analysis_provider: Literal["deterministic", "fallback"] = "deterministic"
 
     @classmethod
     def from_environment(cls) -> "WorkerSettings":
@@ -78,9 +85,16 @@ class WorkerSettings(BaseModel):
             rabbitmq_transcription_queue=os.getenv(
                 "RABBITMQ_TRANSCRIPTION_QUEUE", "vcut.pipeline.commands.transcription"
             ),
+            rabbitmq_clip_analysis_queue=os.getenv(
+                "RABBITMQ_CLIP_ANALYSIS_QUEUE", "vcut.pipeline.commands.clip-analysis"
+            ),
             rabbitmq_transcription_result_routing_key=os.getenv(
                 "RABBITMQ_TRANSCRIPTION_RESULT_ROUTING_KEY",
                 "pipeline.video.transcription.completed",
+            ),
+            rabbitmq_clip_analysis_result_routing_key=os.getenv(
+                "RABBITMQ_CLIP_ANALYSIS_RESULT_ROUTING_KEY",
+                "pipeline.video.clip-analysis.completed",
             ),
             rabbitmq_enabled=os.getenv("RABBITMQ_ENABLED", "true").lower() == "true",
             storage_endpoint=os.getenv("OBJECT_STORAGE_ENDPOINT", "http://localhost:9000"),
@@ -101,4 +115,8 @@ class WorkerSettings(BaseModel):
             whisper_compute_type=os.getenv("WHISPER_COMPUTE_TYPE", "int8"),
             whisper_beam_size=int(os.getenv("WHISPER_BEAM_SIZE", "5")),
             transcription_language=os.getenv("TRANSCRIPTION_LANGUAGE") or None,
+            content_analysis_provider=cast(
+                Literal["deterministic", "fallback"],
+                os.getenv("CONTENT_ANALYSIS_PROVIDER", "deterministic"),
+            ),
         )
