@@ -304,6 +304,11 @@ export default function ProjectUploadPage() {
               <strong>{state.video.originalFilename}</strong>
               <span>{formatBytes(state.video.actualSizeBytes ?? state.video.declaredSizeBytes)} / {state.job?.status === "COMPLETED" ? "validacao concluida" : "aguardando processamento"}</span>
               {!state.job ? <button className="primary-action upload-submit" type="button" onClick={() => void processVideo()}>Processar video <span aria-hidden="true">↗</span></button> : null}
+              {state.job?.status === "COMPLETED" ? (
+                <Link className="quiet-action" href={`/dashboard/projects/${params.projectId}/transcription/${state.video.id}`}>
+                  Abrir transcricao
+                </Link>
+              ) : null}
             </div>
           ) : null}
           {state.phase === "processing" && state.job ? (
