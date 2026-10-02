@@ -7,6 +7,11 @@ from vcut_workers.contracts.messaging import (
     StageRunStatus,
     StageRunUpdate,
 )
+from vcut_workers.contracts.transcription import (
+    TranscribeAudioCommand,
+    TranscriptionProviderResponse,
+    TranscriptionResult,
+)
 from vcut_workers.contracts.video_validation import ValidateVideoCommand, VideoValidationResult
 
 __all__ = [
@@ -17,4 +22,7 @@ __all__ = [
     "StageRunUpdate",
     "ValidateVideoCommand",
     "VideoValidationResult",
+    "TranscribeAudioCommand",
+    "TranscriptionProviderResponse",
+    "TranscriptionResult",
 ]

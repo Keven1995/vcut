@@ -1,5 +1,6 @@
 from pathlib import Path
 from typing import Protocol
+from uuid import UUID
 
 from vcut_workers.domain.media import (
     AudioMetadata,
@@ -8,6 +9,7 @@ from vcut_workers.domain.media import (
     VideoMetadata,
     VisionSignal,
 )
+from vcut_workers.domain.transcription import TranscriptionResult
 
 
 class VideoProcessor(Protocol):
@@ -87,3 +89,16 @@ class WritableObjectStorage(ObjectStorage, Protocol):
 class VisionAnalyzer(Protocol):
     def analyze(self, video: VideoAsset) -> tuple[VisionSignal, ...]:
         """Return typed visual signals for a video."""
+
+
+class TranscriptionProvider(Protocol):
+    def transcribe(self, audio_path: Path, *, language: str | None = None) -> object:
+        """Return an untrusted provider payload for boundary validation."""
+
+
+class TranscriptionResultStore(Protocol):
+    def get(self, video_id: UUID, pipeline_version: int) -> TranscriptionResult | None:
+        """Return the immutable result for one video and pipeline version."""
+
+    def save(self, result: TranscriptionResult) -> TranscriptionResult:
+        """Persist a result without replacing another result for the same version."""
