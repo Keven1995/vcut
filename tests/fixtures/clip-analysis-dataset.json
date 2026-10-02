@@ -1,0 +1,54 @@
+[
+  {
+    "exampleId": "speech-timestamps-v1",
+    "command": {
+      "videoId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      "pipelineVersion": 1,
+      "durationSeconds": 8,
+      "language": "pt-BR",
+      "text": "Hoje vamos mostrar o resultado. A parte importante acontece neste momento. Ate a proxima.",
+      "segments": [
+        {
+          "startSeconds": 0.4,
+          "endSeconds": 2.1,
+          "text": "Hoje vamos mostrar o resultado.",
+          "confidence": 0.96
+        },
+        {
+          "startSeconds": 2.4,
+          "endSeconds": 5.8,
+          "text": "A parte importante acontece neste momento.",
+          "confidence": 0.91
+        },
+        {
+          "startSeconds": 6.1,
+          "endSeconds": 7.4,
+          "text": "Ate a proxima.",
+          "confidence": 0.88
+        }
+      ]
+    },
+    "expectedHasReliableCandidate": true,
+    "expectedMinimumCandidates": 1
+  },
+  {
+    "exampleId": "no-reliable-candidate-v1",
+    "command": {
+      "videoId": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+      "pipelineVersion": 1,
+      "durationSeconds": 8,
+      "language": "pt-BR",
+      "text": "...",
+      "segments": [
+        {
+          "startSeconds": 1.2,
+          "endSeconds": 1.8,
+          "text": "...",
+          "confidence": 0.22
+        }
+      ]
+    },
+    "expectedHasReliableCandidate": false,
+    "expectedMinimumCandidates": 0
+  }
+]
