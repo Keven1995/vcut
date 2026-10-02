@@ -2,6 +2,7 @@ package com.vcut.api.job.infrastructure;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.rabbitmq.client.Channel;
+import com.vcut.api.clip.application.ClipAnalysisApplicationService;
 import com.vcut.api.job.application.JobApplicationService;
 import com.vcut.api.shared.messaging.MessageCompatibility;
 import com.vcut.api.shared.messaging.MessageEnvelope;
@@ -10,6 +11,7 @@ import java.io.IOException;
 import org.springframework.amqp.core.Message;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
 import org.springframework.amqp.support.AmqpHeaders;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.messaging.handler.annotation.Header;
 import org.springframework.stereotype.Component;
@@ -21,14 +23,25 @@ public class WorkerResultListener {
   private final ObjectMapper objectMapper;
   private final JobApplicationService jobApplicationService;
   private final TranscriptionApplicationService transcriptionApplicationService;
+  private final ClipAnalysisApplicationService clipAnalysisApplicationService;
+
+  @Autowired
+  public WorkerResultListener(
+      ObjectMapper objectMapper,
+      JobApplicationService jobApplicationService,
+      TranscriptionApplicationService transcriptionApplicationService,
+      ClipAnalysisApplicationService clipAnalysisApplicationService) {
+    this.objectMapper = objectMapper;
+    this.jobApplicationService = jobApplicationService;
+    this.transcriptionApplicationService = transcriptionApplicationService;
+    this.clipAnalysisApplicationService = clipAnalysisApplicationService;
+  }
 
   public WorkerResultListener(
       ObjectMapper objectMapper,
       JobApplicationService jobApplicationService,
       TranscriptionApplicationService transcriptionApplicationService) {
-    this.objectMapper = objectMapper;
-    this.jobApplicationService = jobApplicationService;
-    this.transcriptionApplicationService = transcriptionApplicationService;
+    this(objectMapper, jobApplicationService, transcriptionApplicationService, null);
   }
 
   @RabbitListener(
@@ -44,6 +57,15 @@ public class WorkerResultListener {
           transcriptionApplicationService.handleStageUpdate(envelope);
         } else {
           transcriptionApplicationService.handleResult(envelope);
+        }
+      } else if (ClipAnalysisApplicationService.OPERATION.equals(envelope.operation())) {
+        if (clipAnalysisApplicationService == null) {
+          throw new IllegalStateException("Clip analysis listener is not configured");
+        }
+        if (ClipAnalysisApplicationService.STAGE_UPDATE_EVENT_TYPE.equals(envelope.eventType())) {
+          clipAnalysisApplicationService.handleStageUpdate(envelope);
+        } else {
+          clipAnalysisApplicationService.handleResult(envelope);
         }
       } else if (JobApplicationService.STAGE_UPDATE_EVENT_TYPE.equals(envelope.eventType())) {
         jobApplicationService.handleStageUpdate(envelope);

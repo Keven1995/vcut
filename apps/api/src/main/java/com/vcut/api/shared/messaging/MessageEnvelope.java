@@ -2,6 +2,7 @@ package com.vcut.api.shared.messaging;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import java.time.Instant;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
@@ -34,7 +35,7 @@ public record MessageEnvelope(
     requirePositive(eventVersion, "eventVersion");
     requirePositive(version, "version");
     requirePositive(attempt, "attempt");
-    data = Map.copyOf(data);
+    data = java.util.Collections.unmodifiableMap(new LinkedHashMap<>(data));
   }
 
   private static void requireText(String value, String field) {

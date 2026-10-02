@@ -9,9 +9,11 @@ from uuid import uuid4
 import pika
 from pydantic import BaseModel, ValidationError
 
+from vcut_workers.application.clip_analysis import GenerateClipCandidatesUseCase
 from vcut_workers.application.transcription import TranscribeAudioUseCase, TranscriptionCommand
 from vcut_workers.application.video_validation import ValidateUploadedVideoUseCase
 from vcut_workers.config import WorkerSettings
+from vcut_workers.contracts.clip_analysis import AnalyzeClipsCommand, AnalyzeClipsResult
 from vcut_workers.contracts.messaging import (
     MessageEnvelope,
     MessageKind,
@@ -21,6 +23,10 @@ from vcut_workers.contracts.messaging import (
 from vcut_workers.contracts.transcription import TranscribeAudioCommand
 from vcut_workers.contracts.video_validation import ValidateVideoCommand, VideoValidationResult
 from vcut_workers.domain.transcription import TranscriptionResult
+from vcut_workers.infrastructure.analysis.deterministic import (
+    DeterministicContentAnalyzer,
+    FallbackContentAnalyzer,
+)
 from vcut_workers.infrastructure.ffmpeg.processor import (
     FFmpegExecutionLimits,
     FFmpegVideoProcessor,
@@ -123,6 +129,18 @@ class PikaPublisher(RetryPublisher, ResultPublisher):
                     "status": "REJECTED",
                     "failureCode": error.code,
                     "actualSizeBytes": 0,
+                },
+                self._result_event_type,
+            )
+            self._publish_result(failure_body)
+        elif self._result_event_type == "ClipAnalysisCompleted":
+            failure_body = _result_envelope(
+                envelope,
+                {
+                    "status": "FAILED",
+                    "failureCode": error.code,
+                    "candidates": [],
+                    "hasReliableCandidate": False,
                 },
                 self._result_event_type,
             )
@@ -316,6 +334,27 @@ def create_transcription_worker(
         command_routing_key="pipeline.video.transcribe",
         result_routing_key=settings.rabbitmq_transcription_result_routing_key,
         result_event_type="TranscriptionCompleted",
+    )
+
+
+def create_clip_analysis_worker(
+    settings: WorkerSettings,
+) -> RabbitMqWorker[AnalyzeClipsCommand, AnalyzeClipsResult]:
+    analyzer = (
+        DeterministicContentAnalyzer()
+        if settings.content_analysis_provider == "deterministic"
+        else FallbackContentAnalyzer()
+    )
+    use_case = GenerateClipCandidatesUseCase(analyzer)
+    return RabbitMqWorker(
+        settings,
+        AnalyzeClipsCommand,
+        AnalyzeClipsResult,
+        use_case.execute,
+        command_queue=settings.rabbitmq_clip_analysis_queue,
+        command_routing_key="pipeline.video.analyze-clips",
+        result_routing_key=settings.rabbitmq_clip_analysis_result_routing_key,
+        result_event_type="ClipAnalysisCompleted",
     )
 
 
