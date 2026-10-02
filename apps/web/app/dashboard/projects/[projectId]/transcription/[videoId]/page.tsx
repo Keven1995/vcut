@@ -152,6 +152,9 @@ export default function TranscriptionPage() {
               {audioUrl ? <audio ref={audioRef} controls src={audioUrl} /> : <span>Player aguardando o audio intermediario.</span>}
               {selectedTime !== null ? <strong>{formatTime(selectedTime)}</strong> : null}
             </div>
+            <Link className="candidate-link" href={`/dashboard/projects/${params.projectId}/clips/${params.videoId}`}>
+              Avancar para candidatos de corte <span>{"->"}</span>
+            </Link>
             <label className="transcription-search" htmlFor="transcription-search">
               Buscar no texto
               <input id="transcription-search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Ex.: momento importante" />
