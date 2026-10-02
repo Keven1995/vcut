@@ -16,6 +16,7 @@ import software.amazon.awssdk.services.s3.model.NoSuchKeyException;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 import software.amazon.awssdk.services.s3.model.S3Exception;
 import software.amazon.awssdk.services.s3.presigner.S3Presigner;
+import software.amazon.awssdk.services.s3.presigner.model.GetObjectPresignRequest;
 import software.amazon.awssdk.services.s3.presigner.model.PutObjectPresignRequest;
 
 @Component
@@ -67,6 +68,23 @@ public class S3CompatibleObjectStorageAdapter implements ObjectStorage {
             .build();
     var presigned = presigner.presignPutObject(presignRequest);
     return new PresignedUpload(
+        presigned.url().toString(), Instant.now().plus(properties.presignedUrlTtl()));
+  }
+
+  @Override
+  public PresignedDownload presignDownload(String objectKey) {
+    var getObjectRequest =
+        software.amazon.awssdk.services.s3.model.GetObjectRequest.builder()
+            .bucket(properties.bucket())
+            .key(objectKey)
+            .build();
+    var presignRequest =
+        GetObjectPresignRequest.builder()
+            .signatureDuration(properties.presignedUrlTtl())
+            .getObjectRequest(getObjectRequest)
+            .build();
+    var presigned = presigner.presignGetObject(presignRequest);
+    return new PresignedDownload(
         presigned.url().toString(), Instant.now().plus(properties.presignedUrlTtl()));
   }
 

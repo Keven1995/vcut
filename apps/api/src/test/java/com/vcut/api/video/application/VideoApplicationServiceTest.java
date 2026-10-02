@@ -148,6 +148,11 @@ class VideoApplicationServiceTest {
     }
 
     @Override
+    public PresignedDownload presignDownload(String objectKey) {
+      return new PresignedDownload("http://storage/download", NOW.plusSeconds(900));
+    }
+
+    @Override
     public Optional<StoredObject> head(String objectKey) {
       return Optional.ofNullable(object);
     }

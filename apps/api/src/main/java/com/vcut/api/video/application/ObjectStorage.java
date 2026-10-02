@@ -10,6 +10,8 @@ public interface ObjectStorage {
 
   PresignedUpload presignUpload(String objectKey, String contentType, long contentLength);
 
+  PresignedDownload presignDownload(String objectKey);
+
   Optional<StoredObject> head(String objectKey);
 
   InputStream read(String objectKey);
@@ -17,6 +19,8 @@ public interface ObjectStorage {
   void delete(String objectKey);
 
   record PresignedUpload(String url, Instant expiresAt) {}
+
+  record PresignedDownload(String url, Instant expiresAt) {}
 
   record StoredObject(
       String objectKey,
