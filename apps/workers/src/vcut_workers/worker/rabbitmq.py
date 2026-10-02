@@ -3,12 +3,13 @@ import logging
 import time
 from collections.abc import Callable
 from datetime import UTC, datetime
-from typing import cast
+from typing import Generic, TypeVar, cast
 from uuid import uuid4
 
 import pika
 from pydantic import BaseModel, ValidationError
 
+from vcut_workers.application.transcription import TranscribeAudioUseCase, TranscriptionCommand
 from vcut_workers.application.video_validation import ValidateUploadedVideoUseCase
 from vcut_workers.config import WorkerSettings
 from vcut_workers.contracts.messaging import (
@@ -17,13 +18,20 @@ from vcut_workers.contracts.messaging import (
     RetryMetadata,
     StageRunUpdate,
 )
+from vcut_workers.contracts.transcription import TranscribeAudioCommand
 from vcut_workers.contracts.video_validation import ValidateVideoCommand, VideoValidationResult
+from vcut_workers.domain.transcription import TranscriptionResult
 from vcut_workers.infrastructure.ffmpeg.processor import (
     FFmpegExecutionLimits,
     FFmpegVideoProcessor,
 )
 from vcut_workers.infrastructure.persistence.idempotency import PostgresIdempotencyStore
+from vcut_workers.infrastructure.persistence.transcription import (
+    ObjectStorageTranscriptionResultStore,
+)
 from vcut_workers.infrastructure.storage.s3 import S3ObjectStorage
+from vcut_workers.infrastructure.transcription.fake import DeterministicTranscriptionProvider
+from vcut_workers.infrastructure.transcription.whisper import WhisperTranscriptionProvider
 from vcut_workers.worker.consumer import (
     ConsumerBase,
     MessageDelivery,
@@ -34,6 +42,8 @@ from vcut_workers.worker.errors import ProcessingErrorInfo
 from vcut_workers.worker.retry import RetryPolicy
 
 LOGGER = logging.getLogger(__name__)
+CommandModelT = TypeVar("CommandModelT", bound=BaseModel)
+ResultModelT = TypeVar("ResultModelT", bound=BaseModel)
 
 
 class PikaDelivery(MessageDelivery):
@@ -61,15 +71,24 @@ class PikaDelivery(MessageDelivery):
 
 class PikaPublisher(RetryPublisher, ResultPublisher):
     def __init__(
-        self, channel: pika.adapters.blocking_connection.BlockingChannel, settings: WorkerSettings
+        self,
+        channel: pika.adapters.blocking_connection.BlockingChannel,
+        settings: WorkerSettings,
+        *,
+        command_routing_key: str = "pipeline.video.validate",
+        result_routing_key: str | None = None,
+        result_event_type: str = "VideoValidationCompleted",
     ) -> None:
         self._channel = channel
         self._settings = settings
+        self._command_routing_key = command_routing_key
+        self._result_routing_key = result_routing_key or settings.rabbitmq_result_routing_key
+        self._result_event_type = result_event_type
 
     async def publish_retry(self, body: bytes, metadata: RetryMetadata) -> None:
         self._channel.basic_publish(
             exchange=self._settings.rabbitmq_retry_exchange,
-            routing_key="pipeline.video.validate",
+            routing_key=self._command_routing_key,
             body=body,
             properties=pika.BasicProperties(
                 content_type="application/json",
@@ -81,7 +100,7 @@ class PikaPublisher(RetryPublisher, ResultPublisher):
     async def publish_dead_letter(self, body: bytes, error: ProcessingErrorInfo) -> None:
         self._channel.basic_publish(
             exchange=self._settings.rabbitmq_dead_letter_exchange,
-            routing_key="pipeline.video.validate",
+            routing_key=self._command_routing_key,
             body=body,
             properties=pika.BasicProperties(
                 content_type="application/json",
@@ -97,21 +116,23 @@ class PikaPublisher(RetryPublisher, ResultPublisher):
             envelope = MessageEnvelope.model_validate_json(body)
         except ValidationError:
             return
-        failure_body = _result_envelope(
-            envelope,
-            {
-                "status": "REJECTED",
-                "failureCode": error.code,
-                "actualSizeBytes": 0,
-            },
-        )
-        self._publish_result(failure_body)
+        if self._result_event_type == "VideoValidationCompleted":
+            failure_body = _result_envelope(
+                envelope,
+                {
+                    "status": "REJECTED",
+                    "failureCode": error.code,
+                    "actualSizeBytes": 0,
+                },
+                self._result_event_type,
+            )
+            self._publish_result(failure_body)
 
     async def publish_result(self, envelope: MessageEnvelope, result: BaseModel) -> None:
         data = cast(
             dict[str, object], result.model_dump(mode="json", by_alias=True, exclude_none=True)
         )
-        self._publish_result(_result_envelope(envelope, data))
+        self._publish_result(_result_envelope(envelope, data, self._result_event_type))
 
     async def update(self, update: StageRunUpdate) -> None:
         data: dict[str, object] = {
@@ -129,20 +150,33 @@ class PikaPublisher(RetryPublisher, ResultPublisher):
     def _publish_result(self, body: bytes) -> None:
         self._channel.basic_publish(
             exchange=self._settings.rabbitmq_result_exchange,
-            routing_key=self._settings.rabbitmq_result_routing_key,
+            routing_key=self._result_routing_key,
             body=body,
             properties=pika.BasicProperties(content_type="application/json", delivery_mode=2),
         )
 
 
-class RabbitMqWorker:
+class RabbitMqWorker(Generic[CommandModelT, ResultModelT]):
     def __init__(
         self,
         settings: WorkerSettings,
-        handler: Callable[[ValidateVideoCommand], VideoValidationResult],
+        command_type: type[CommandModelT],
+        result_type: type[ResultModelT],
+        handler: Callable[[CommandModelT], ResultModelT],
+        *,
+        command_queue: str,
+        command_routing_key: str,
+        result_routing_key: str,
+        result_event_type: str,
     ) -> None:
         self._settings = settings
+        self._command_type = command_type
+        self._result_type = result_type
         self._handler = handler
+        self._command_queue = command_queue
+        self._command_routing_key = command_routing_key
+        self._result_routing_key = result_routing_key
+        self._result_event_type = result_event_type
 
     def run_forever(self) -> None:
         credentials = pika.PlainCredentials(
@@ -170,17 +204,23 @@ class RabbitMqWorker:
         channel.confirm_delivery()
         channel.basic_qos(prefetch_count=1)
         channel.queue_declare(
-            queue=self._settings.rabbitmq_command_queue,
+            queue=self._command_queue,
             durable=True,
             arguments={
                 "x-dead-letter-exchange": self._settings.rabbitmq_dead_letter_exchange,
-                "x-dead-letter-routing-key": "pipeline.video.validate",
+                "x-dead-letter-routing-key": self._command_routing_key,
             },
         )
-        publisher = PikaPublisher(channel, self._settings)
+        publisher = PikaPublisher(
+            channel,
+            self._settings,
+            command_routing_key=self._command_routing_key,
+            result_routing_key=self._result_routing_key,
+            result_event_type=self._result_event_type,
+        )
         consumer = ConsumerBase(
-            ValidateVideoCommand,
-            VideoValidationResult,
+            self._command_type,
+            self._result_type,
             self._handler,
             PostgresIdempotencyStore(self._settings),
             retry_policy=RetryPolicy(
@@ -209,14 +249,16 @@ class RabbitMqWorker:
                     LOGGER.exception("worker_delivery_requeue_failed")
 
         channel.basic_consume(
-            queue=self._settings.rabbitmq_command_queue,
+            queue=self._command_queue,
             on_message_callback=on_message,
             auto_ack=False,
         )
         channel.start_consuming()
 
 
-def create_video_validation_worker(settings: WorkerSettings) -> RabbitMqWorker:
+def create_video_validation_worker(
+    settings: WorkerSettings,
+) -> RabbitMqWorker[ValidateVideoCommand, VideoValidationResult]:
     storage = S3ObjectStorage(settings)
     processor = FFmpegVideoProcessor(
         settings.ffmpeg_binary,
@@ -227,15 +269,64 @@ def create_video_validation_worker(settings: WorkerSettings) -> RabbitMqWorker:
         ),
     )
     use_case = ValidateUploadedVideoUseCase(storage, processor)
-    return RabbitMqWorker(settings, use_case.execute)
+    return RabbitMqWorker(
+        settings,
+        ValidateVideoCommand,
+        VideoValidationResult,
+        use_case.execute,
+        command_queue=settings.rabbitmq_command_queue,
+        command_routing_key="pipeline.video.validate",
+        result_routing_key=settings.rabbitmq_result_routing_key,
+        result_event_type="VideoValidationCompleted",
+    )
 
 
-def _result_envelope(envelope: MessageEnvelope, data: dict[str, object]) -> bytes:
+def create_transcription_worker(
+    settings: WorkerSettings,
+) -> RabbitMqWorker[TranscribeAudioCommand, TranscriptionResult]:
+    storage = S3ObjectStorage(settings)
+    provider = (
+        DeterministicTranscriptionProvider()
+        if settings.transcription_provider == "fake"
+        else WhisperTranscriptionProvider.from_settings(settings)
+    )
+    use_case = TranscribeAudioUseCase(
+        provider,
+        ObjectStorageTranscriptionResultStore(storage),
+        storage,
+        provider_name=settings.transcription_provider,
+    )
+
+    def transcribe(command: TranscribeAudioCommand) -> TranscriptionResult:
+        return use_case.execute(
+            TranscriptionCommand(
+                video_id=command.video_id,
+                pipeline_version=command.pipeline_version,
+                audio_object_key=command.audio_object_key,
+                language=command.language,
+            )
+        )
+
+    return RabbitMqWorker(
+        settings,
+        TranscribeAudioCommand,
+        TranscriptionResult,
+        transcribe,
+        command_queue=settings.rabbitmq_transcription_queue,
+        command_routing_key="pipeline.video.transcribe",
+        result_routing_key=settings.rabbitmq_transcription_result_routing_key,
+        result_event_type="TranscriptionCompleted",
+    )
+
+
+def _result_envelope(
+    envelope: MessageEnvelope, data: dict[str, object], event_type: str
+) -> bytes:
     result = MessageEnvelope.model_validate(
         {
             "kind": MessageKind.EVENT,
             "eventId": uuid4(),
-            "eventType": "VideoValidationCompleted",
+            "eventType": event_type,
             "eventVersion": 1,
             "jobId": envelope.job_id,
             "resourceId": envelope.resource_id,

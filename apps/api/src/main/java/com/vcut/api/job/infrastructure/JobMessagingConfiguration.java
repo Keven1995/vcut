@@ -26,11 +26,17 @@ public class JobMessagingConfiguration {
   public static final String DEAD_LETTER_EXCHANGE = "vcut.pipeline.dlx";
   public static final String RESULT_EXCHANGE = "vcut.pipeline.results";
   public static final String COMMAND_QUEUE = "vcut.pipeline.commands.video-validation";
+  public static final String TRANSCRIPTION_COMMAND_QUEUE = "vcut.pipeline.commands.transcription";
   public static final String RETRY_QUEUE = "vcut.pipeline.retry.video-validation";
+  public static final String TRANSCRIPTION_RETRY_QUEUE = "vcut.pipeline.retry.transcription";
   public static final String DEAD_LETTER_QUEUE = "vcut.pipeline.dlq.video-validation";
+  public static final String TRANSCRIPTION_DEAD_LETTER_QUEUE = "vcut.pipeline.dlq.transcription";
   public static final String RESULT_QUEUE = "vcut.pipeline.results.api";
   public static final String COMMAND_ROUTING_KEY = "pipeline.video.validate";
+  public static final String TRANSCRIPTION_COMMAND_ROUTING_KEY = "pipeline.video.transcribe";
   public static final String RESULT_ROUTING_KEY = "pipeline.video.validation.completed";
+  public static final String TRANSCRIPTION_RESULT_ROUTING_KEY =
+      "pipeline.video.transcription.completed";
 
   @Bean
   DirectExchange commandExchange() {
@@ -61,6 +67,14 @@ public class JobMessagingConfiguration {
   }
 
   @Bean
+  Queue transcriptionCommandQueue() {
+    return QueueBuilder.durable(TRANSCRIPTION_COMMAND_QUEUE)
+        .deadLetterExchange(DEAD_LETTER_EXCHANGE)
+        .deadLetterRoutingKey(TRANSCRIPTION_COMMAND_ROUTING_KEY)
+        .build();
+  }
+
+  @Bean
   Queue retryQueue() {
     return QueueBuilder.durable(RETRY_QUEUE)
         .ttl(300_000)
@@ -70,8 +84,22 @@ public class JobMessagingConfiguration {
   }
 
   @Bean
+  Queue transcriptionRetryQueue() {
+    return QueueBuilder.durable(TRANSCRIPTION_RETRY_QUEUE)
+        .ttl(300_000)
+        .deadLetterExchange(COMMAND_EXCHANGE)
+        .deadLetterRoutingKey(TRANSCRIPTION_COMMAND_ROUTING_KEY)
+        .build();
+  }
+
+  @Bean
   Queue deadLetterQueue() {
     return QueueBuilder.durable(DEAD_LETTER_QUEUE).build();
+  }
+
+  @Bean
+  Queue transcriptionDeadLetterQueue() {
+    return QueueBuilder.durable(TRANSCRIPTION_DEAD_LETTER_QUEUE).build();
   }
 
   @Bean
@@ -90,6 +118,15 @@ public class JobMessagingConfiguration {
   }
 
   @Bean
+  Binding transcriptionCommandBinding(
+      @Qualifier("transcriptionCommandQueue") Queue transcriptionCommandQueue,
+      @Qualifier("commandExchange") DirectExchange commandExchange) {
+    return BindingBuilder.bind(transcriptionCommandQueue)
+        .to(commandExchange)
+        .with(TRANSCRIPTION_COMMAND_ROUTING_KEY);
+  }
+
+  @Bean
   Binding retryBinding(
       @Qualifier("retryQueue") Queue retryQueue,
       @Qualifier("retryExchange") DirectExchange retryExchange) {
@@ -97,10 +134,28 @@ public class JobMessagingConfiguration {
   }
 
   @Bean
+  Binding transcriptionRetryBinding(
+      @Qualifier("transcriptionRetryQueue") Queue transcriptionRetryQueue,
+      @Qualifier("retryExchange") DirectExchange retryExchange) {
+    return BindingBuilder.bind(transcriptionRetryQueue)
+        .to(retryExchange)
+        .with(TRANSCRIPTION_COMMAND_ROUTING_KEY);
+  }
+
+  @Bean
   Binding deadLetterBinding(
       @Qualifier("deadLetterQueue") Queue deadLetterQueue,
       @Qualifier("deadLetterExchange") DirectExchange deadLetterExchange) {
     return BindingBuilder.bind(deadLetterQueue).to(deadLetterExchange).with(COMMAND_ROUTING_KEY);
+  }
+
+  @Bean
+  Binding transcriptionDeadLetterBinding(
+      @Qualifier("transcriptionDeadLetterQueue") Queue transcriptionDeadLetterQueue,
+      @Qualifier("deadLetterExchange") DirectExchange deadLetterExchange) {
+    return BindingBuilder.bind(transcriptionDeadLetterQueue)
+        .to(deadLetterExchange)
+        .with(TRANSCRIPTION_COMMAND_ROUTING_KEY);
   }
 
   @Bean

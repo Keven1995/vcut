@@ -5,6 +5,7 @@ import com.rabbitmq.client.Channel;
 import com.vcut.api.job.application.JobApplicationService;
 import com.vcut.api.shared.messaging.MessageCompatibility;
 import com.vcut.api.shared.messaging.MessageEnvelope;
+import com.vcut.api.transcription.application.TranscriptionApplicationService;
 import java.io.IOException;
 import org.springframework.amqp.core.Message;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
@@ -19,11 +20,15 @@ public class WorkerResultListener {
 
   private final ObjectMapper objectMapper;
   private final JobApplicationService jobApplicationService;
+  private final TranscriptionApplicationService transcriptionApplicationService;
 
   public WorkerResultListener(
-      ObjectMapper objectMapper, JobApplicationService jobApplicationService) {
+      ObjectMapper objectMapper,
+      JobApplicationService jobApplicationService,
+      TranscriptionApplicationService transcriptionApplicationService) {
     this.objectMapper = objectMapper;
     this.jobApplicationService = jobApplicationService;
+    this.transcriptionApplicationService = transcriptionApplicationService;
   }
 
   @RabbitListener(
@@ -34,7 +39,13 @@ public class WorkerResultListener {
     try {
       MessageEnvelope envelope = objectMapper.readValue(message.getBody(), MessageEnvelope.class);
       MessageCompatibility.requireSupported(envelope);
-      if (JobApplicationService.STAGE_UPDATE_EVENT_TYPE.equals(envelope.eventType())) {
+      if (TranscriptionApplicationService.OPERATION.equals(envelope.operation())) {
+        if (TranscriptionApplicationService.STAGE_UPDATE_EVENT_TYPE.equals(envelope.eventType())) {
+          transcriptionApplicationService.handleStageUpdate(envelope);
+        } else {
+          transcriptionApplicationService.handleResult(envelope);
+        }
+      } else if (JobApplicationService.STAGE_UPDATE_EVENT_TYPE.equals(envelope.eventType())) {
         jobApplicationService.handleStageUpdate(envelope);
       } else {
         jobApplicationService.handleResult(envelope);
