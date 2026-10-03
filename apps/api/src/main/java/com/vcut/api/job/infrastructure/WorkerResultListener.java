@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.rabbitmq.client.Channel;
 import com.vcut.api.clip.application.ClipAnalysisApplicationService;
 import com.vcut.api.clip.application.ClipApplicationService;
+import com.vcut.api.clip.application.FinalRenderApplicationService;
 import com.vcut.api.job.application.JobApplicationService;
 import com.vcut.api.shared.messaging.MessageCompatibility;
 import com.vcut.api.shared.messaging.MessageEnvelope;
@@ -27,6 +28,7 @@ public class WorkerResultListener {
   private final TranscriptionApplicationService transcriptionApplicationService;
   private final ClipAnalysisApplicationService clipAnalysisApplicationService;
   private final ClipApplicationService clipApplicationService;
+  private final FinalRenderApplicationService finalRenderApplicationService;
 
   @Autowired
   public WorkerResultListener(
@@ -34,12 +36,29 @@ public class WorkerResultListener {
       JobApplicationService jobApplicationService,
       TranscriptionApplicationService transcriptionApplicationService,
       ClipAnalysisApplicationService clipAnalysisApplicationService,
-      @Nullable ClipApplicationService clipApplicationService) {
+      @Nullable ClipApplicationService clipApplicationService,
+      @Nullable FinalRenderApplicationService finalRenderApplicationService) {
     this.objectMapper = objectMapper;
     this.jobApplicationService = jobApplicationService;
     this.transcriptionApplicationService = transcriptionApplicationService;
     this.clipAnalysisApplicationService = clipAnalysisApplicationService;
     this.clipApplicationService = clipApplicationService;
+    this.finalRenderApplicationService = finalRenderApplicationService;
+  }
+
+  public WorkerResultListener(
+      ObjectMapper objectMapper,
+      JobApplicationService jobApplicationService,
+      TranscriptionApplicationService transcriptionApplicationService,
+      ClipAnalysisApplicationService clipAnalysisApplicationService,
+      @Nullable ClipApplicationService clipApplicationService) {
+    this(
+        objectMapper,
+        jobApplicationService,
+        transcriptionApplicationService,
+        clipAnalysisApplicationService,
+        clipApplicationService,
+        null);
   }
 
   public WorkerResultListener(
@@ -52,6 +71,7 @@ public class WorkerResultListener {
         jobApplicationService,
         transcriptionApplicationService,
         clipAnalysisApplicationService,
+        null,
         null);
   }
 
@@ -59,7 +79,7 @@ public class WorkerResultListener {
       ObjectMapper objectMapper,
       JobApplicationService jobApplicationService,
       TranscriptionApplicationService transcriptionApplicationService) {
-    this(objectMapper, jobApplicationService, transcriptionApplicationService, null);
+    this(objectMapper, jobApplicationService, transcriptionApplicationService, null, null, null);
   }
 
   @RabbitListener(
@@ -84,6 +104,15 @@ public class WorkerResultListener {
           clipApplicationService.handleStageUpdate(envelope);
         } else {
           clipApplicationService.handleResult(envelope);
+        }
+      } else if (FinalRenderApplicationService.OPERATION.equals(envelope.operation())) {
+        if (finalRenderApplicationService == null) {
+          throw new IllegalStateException("Final render listener is not configured");
+        }
+        if (FinalRenderApplicationService.STAGE_UPDATE_EVENT_TYPE.equals(envelope.eventType())) {
+          finalRenderApplicationService.handleStageUpdate(envelope);
+        } else {
+          finalRenderApplicationService.handleResult(envelope);
         }
       } else if (ClipAnalysisApplicationService.OPERATION.equals(envelope.operation())) {
         if (clipAnalysisApplicationService == null) {
