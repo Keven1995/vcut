@@ -75,3 +75,6 @@ vcut:
   messaging:
     enabled: ${RABBITMQ_ENABLED:true}
     publisher-delay-ms: ${RABBITMQ_PUBLISHER_DELAY_MS:1000}
+  vision:
+    smart-reframing-enabled: ${SMART_REFRAMING_ENABLED:false}
+    provider: ${VISION_PROVIDER:deterministic}

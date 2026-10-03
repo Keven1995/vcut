@@ -30,3 +30,11 @@ processing:
   maxClipDurationSeconds: 90
   maxClipsPerRequest: 20
   maxRetries: 3
+
+vision:
+  smartReframingEnabled: false
+  provider: deterministic
+  sceneThreshold: 0.4
+  frameIntervalSeconds: 1
+  maxFramesPerClip: 180
+  faceConfidence: 0.5

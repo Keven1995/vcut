@@ -13,6 +13,7 @@ from vcut_workers.domain.media import (
     VisionSignal,
 )
 from vcut_workers.domain.transcription import TranscriptionResult
+from vcut_workers.domain.vision import SceneInterval
 
 
 class VideoProcessor(Protocol):
@@ -103,6 +104,33 @@ class WritableObjectStorage(ObjectStorage, Protocol):
 class VisionAnalyzer(Protocol):
     def analyze(self, video: VideoAsset) -> tuple[VisionSignal, ...]:
         """Return typed visual signals for a video."""
+
+
+class SmartCropAnalyzer(Protocol):
+    def crop_for(
+        self,
+        source: Path,
+        *,
+        video: VideoAsset,
+        video_id: UUID,
+        pipeline_version: int,
+        start_seconds: float,
+        end_seconds: float,
+        fallback_x: float,
+        fallback_y: float,
+        fallback_zoom: float,
+    ) -> tuple[float, float, float]:
+        """Return a bounded crop center and zoom, or the provided fallback."""
+
+
+class SceneIntervalStore(Protocol):
+    def save(
+        self,
+        video_id: UUID,
+        pipeline_version: int,
+        intervals: tuple[SceneInterval, ...],
+    ) -> None:
+        """Persist scene intervals for one immutable pipeline version."""
 
 
 class TranscriptionProvider(Protocol):

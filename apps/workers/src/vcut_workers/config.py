@@ -82,6 +82,12 @@ class WorkerSettings(BaseModel):
     clip_vertical_height: int = Field(default=1920, gt=0)
     clip_horizontal_width: int = Field(default=1920, gt=0)
     clip_horizontal_height: int = Field(default=1080, gt=0)
+    smart_reframing_enabled: bool = False
+    vision_provider: Literal["deterministic", "mediapipe"] = "deterministic"
+    vision_scene_threshold: float = Field(default=0.4, gt=0, le=1)
+    vision_frame_interval_seconds: float = Field(default=1, gt=0)
+    vision_max_frames: int = Field(default=180, gt=0)
+    vision_face_confidence: float = Field(default=0.5, gt=0, le=1)
 
     @classmethod
     def from_environment(cls) -> "WorkerSettings":
@@ -167,4 +173,16 @@ class WorkerSettings(BaseModel):
             clip_vertical_height=int(os.getenv("CLIP_VERTICAL_HEIGHT", "1920")),
             clip_horizontal_width=int(os.getenv("CLIP_HORIZONTAL_WIDTH", "1920")),
             clip_horizontal_height=int(os.getenv("CLIP_HORIZONTAL_HEIGHT", "1080")),
+            smart_reframing_enabled=os.getenv("SMART_REFRAMING_ENABLED", "false").lower()
+            == "true",
+            vision_provider=cast(
+                Literal["deterministic", "mediapipe"],
+                os.getenv("VISION_PROVIDER", "deterministic"),
+            ),
+            vision_scene_threshold=float(os.getenv("VISION_SCENE_THRESHOLD", "0.4")),
+            vision_frame_interval_seconds=float(
+                os.getenv("VISION_FRAME_INTERVAL_SECONDS", "1")
+            ),
+            vision_max_frames=int(os.getenv("VISION_MAX_FRAMES", "180")),
+            vision_face_confidence=float(os.getenv("VISION_FACE_CONFIDENCE", "0.5")),
         )
