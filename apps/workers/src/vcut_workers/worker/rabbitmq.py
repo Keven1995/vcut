@@ -12,6 +12,8 @@ from pydantic import BaseModel, ValidationError
 from vcut_workers.application.clip_analysis import GenerateClipCandidatesUseCase
 from vcut_workers.application.clip_generation import ClipGenerationLimits, GenerateClipUseCase
 from vcut_workers.application.final_render import FinalRenderUseCase
+from vcut_workers.application.ports import SmartCropAnalyzer
+from vcut_workers.application.smart_reframing import SmartReframingAnalyzer
 from vcut_workers.application.transcription import TranscribeAudioUseCase, TranscriptionCommand
 from vcut_workers.application.video_validation import ValidateUploadedVideoUseCase
 from vcut_workers.config import WorkerSettings
@@ -40,9 +42,13 @@ from vcut_workers.infrastructure.persistence.idempotency import PostgresIdempote
 from vcut_workers.infrastructure.persistence.transcription import (
     ObjectStorageTranscriptionResultStore,
 )
+from vcut_workers.infrastructure.persistence.vision import PostgresSceneIntervalStore
 from vcut_workers.infrastructure.storage.s3 import S3ObjectStorage
 from vcut_workers.infrastructure.transcription.fake import DeterministicTranscriptionProvider
 from vcut_workers.infrastructure.transcription.whisper import WhisperTranscriptionProvider
+from vcut_workers.infrastructure.vision.deterministic import DeterministicFaceDetector
+from vcut_workers.infrastructure.vision.mediapipe import MediaPipeFaceDetector
+from vcut_workers.infrastructure.vision.scene import FFmpegSceneDetector
 from vcut_workers.worker.consumer import (
     ConsumerBase,
     MessageDelivery,
@@ -430,6 +436,7 @@ def create_clip_generation_worker(
             max_memory_bytes=settings.ffmpeg_max_memory_bytes,
         ),
     )
+    smart_reframing = _smart_reframing_for(settings)
     use_case = GenerateClipUseCase(
         storage,
         processor,
@@ -443,6 +450,8 @@ def create_clip_generation_worker(
             horizontal_width=settings.clip_horizontal_width,
             horizontal_height=settings.clip_horizontal_height,
         ),
+        smart_reframing,
+        settings.smart_reframing_enabled,
     )
     return RabbitMqWorker(
         settings,
@@ -468,6 +477,7 @@ def create_final_render_worker(
             max_memory_bytes=settings.ffmpeg_max_memory_bytes,
         ),
     )
+    smart_reframing = _smart_reframing_for(settings)
     use_case = FinalRenderUseCase(
         storage,
         processor,
@@ -481,6 +491,8 @@ def create_final_render_worker(
             horizontal_width=settings.clip_horizontal_width,
             horizontal_height=settings.clip_horizontal_height,
         ),
+        smart_reframing,
+        settings.smart_reframing_enabled,
     )
     return RabbitMqWorker(
         settings,
@@ -492,6 +504,27 @@ def create_final_render_worker(
         result_routing_key=settings.rabbitmq_final_render_result_routing_key,
         result_event_type="FinalRenderCompleted",
         progress_handler=use_case.execute,
+    )
+
+
+def _smart_reframing_for(settings: WorkerSettings) -> SmartCropAnalyzer | None:
+    if not settings.smart_reframing_enabled:
+        return None
+    face_detector = (
+        MediaPipeFaceDetector(min_detection_confidence=settings.vision_face_confidence)
+        if settings.vision_provider == "mediapipe"
+        else DeterministicFaceDetector()
+    )
+    return SmartReframingAnalyzer(
+        FFmpegSceneDetector(
+            settings.ffmpeg_binary,
+            threshold=settings.vision_scene_threshold,
+            timeout_seconds=settings.ffmpeg_timeout_seconds,
+        ),
+        face_detector,
+        frame_interval_seconds=settings.vision_frame_interval_seconds,
+        max_frames=settings.vision_max_frames,
+        scene_store=PostgresSceneIntervalStore(settings),
     )
 
 

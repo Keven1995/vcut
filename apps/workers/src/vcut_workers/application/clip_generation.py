@@ -1,3 +1,4 @@
+import logging
 from math import isfinite
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -5,7 +6,7 @@ from tempfile import TemporaryDirectory
 from pydantic import BaseModel, ConfigDict, Field
 
 from vcut_workers.application.errors import MediaProcessingError
-from vcut_workers.application.ports import MediaProcessor, WritableObjectStorage
+from vcut_workers.application.ports import MediaProcessor, SmartCropAnalyzer, WritableObjectStorage
 from vcut_workers.contracts.clip_generation import (
     ClipGenerationCommand,
     ClipGenerationResult,
@@ -15,8 +16,11 @@ from vcut_workers.domain.clip_generation import (
     CaptionTrack,
     ClipComposition,
     ClipStatus,
+    CropSettings,
 )
-from vcut_workers.domain.media import VideoMetadata
+from vcut_workers.domain.media import VideoAsset, VideoMetadata
+
+LOGGER = logging.getLogger(__name__)
 
 
 class ClipGenerationLimits(BaseModel):
@@ -40,10 +44,14 @@ class GenerateClipUseCase:
         object_storage: WritableObjectStorage,
         media_processor: MediaProcessor,
         limits: ClipGenerationLimits | None = None,
+        smart_reframing: SmartCropAnalyzer | None = None,
+        smart_reframing_enabled: bool = False,
     ) -> None:
         self._object_storage = object_storage
         self._media_processor = media_processor
         self._limits = limits or ClipGenerationLimits()
+        self._smart_reframing = smart_reframing
+        self._smart_reframing_enabled = smart_reframing_enabled
 
     def execute(self, command: ClipGenerationCommand) -> ClipGenerationResult:
         if len(command.caption_cues) > self._limits.max_caption_cues:
@@ -78,6 +86,7 @@ class GenerateClipUseCase:
 
                 source_video_metadata = self._media_processor.probe(source)
                 self._validate_source_interval(command, source_video_metadata)
+                crop_settings = self._crop_settings(command, source, source_video_metadata)
                 composition = ClipComposition(
                     start_seconds=command.start_seconds,
                     end_seconds=command.end_seconds,
@@ -87,7 +96,7 @@ class GenerateClipUseCase:
                         duration_seconds=command.duration_seconds,
                     ),
                     caption_style=command.caption_style,
-                    crop_settings=command.crop_settings,
+                    crop_settings=crop_settings,
                     width=self._width_for(command.aspect_ratio),
                     height=self._height_for(command.aspect_ratio),
                 )
@@ -123,6 +132,37 @@ class GenerateClipUseCase:
             raise MediaProcessingError(
                 "CLIP_INTERVAL_OUT_OF_RANGE", "clip interval is outside source media"
             )
+
+    def _crop_settings(
+        self, command: ClipGenerationCommand, source: Path, metadata: VideoMetadata
+    ) -> CropSettings:
+        crop_settings = command.crop_settings
+        if (
+            command.aspect_ratio is not AspectRatio.VERTICAL
+            or not self._smart_reframing_enabled
+            or self._smart_reframing is None
+            or crop_settings != CropSettings.centered()
+        ):
+            return crop_settings
+        try:
+            x, y, zoom = self._smart_reframing.crop_for(
+                source,
+                video=VideoAsset(
+                    object_key=command.source_object_key,
+                    duration_seconds=metadata.duration_seconds,
+                ),
+                video_id=command.video_id,
+                pipeline_version=command.pipeline_version,
+                start_seconds=command.start_seconds,
+                end_seconds=command.end_seconds,
+                fallback_x=crop_settings.x,
+                fallback_y=crop_settings.y,
+                fallback_zoom=crop_settings.zoom,
+            )
+            return CropSettings(x=x, y=y, zoom=zoom)
+        except Exception as error:
+            LOGGER.warning("smart_reframing_fallback error=%s", type(error).__name__)
+            return crop_settings
 
     def _validate_final_metadata(
         self, command: ClipGenerationCommand, metadata: VideoMetadata

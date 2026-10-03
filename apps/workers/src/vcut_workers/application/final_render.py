@@ -4,7 +4,7 @@ from tempfile import TemporaryDirectory
 
 from vcut_workers.application.clip_generation import ClipGenerationLimits, GenerateClipUseCase
 from vcut_workers.application.errors import MediaProcessingError
-from vcut_workers.application.ports import MediaProcessor, WritableObjectStorage
+from vcut_workers.application.ports import MediaProcessor, SmartCropAnalyzer, WritableObjectStorage
 from vcut_workers.contracts.clip_generation import ClipGenerationCommand
 from vcut_workers.contracts.final_render import FinalRenderCommand, FinalRenderResult
 
@@ -17,10 +17,18 @@ class FinalRenderUseCase:
         object_storage: WritableObjectStorage,
         media_processor: MediaProcessor,
         limits: ClipGenerationLimits | None = None,
+        smart_reframing: SmartCropAnalyzer | None = None,
+        smart_reframing_enabled: bool = False,
     ) -> None:
         self._object_storage = object_storage
         self._media_processor = media_processor
-        self._clip_generation = GenerateClipUseCase(object_storage, media_processor, limits)
+        self._clip_generation = GenerateClipUseCase(
+            object_storage,
+            media_processor,
+            limits,
+            smart_reframing,
+            smart_reframing_enabled,
+        )
 
     def execute(
         self,
