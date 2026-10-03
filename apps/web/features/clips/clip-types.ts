@@ -59,6 +59,24 @@ export type PreviewUrl = {
   readonly expiresAt: string;
 };
 
+export type RenderStatus = "QUEUED" | "PROCESSING" | "READY" | "FAILED";
+
+export type ClipRender = {
+  readonly id: string;
+  readonly clipId: string;
+  readonly editVersion: number;
+  readonly status: RenderStatus;
+  readonly progress: number;
+  readonly durationSeconds: number | null;
+  readonly width: number | null;
+  readonly height: number | null;
+  readonly aspectRatio: AspectRatio | null;
+  readonly errorCode: string | null;
+  readonly errorMessage: string | null;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+};
+
 export type ClipCandidateForEditor = {
   readonly id: string;
   readonly startSeconds: number;
@@ -125,6 +143,51 @@ export function parsePreviewUrl(value: unknown): PreviewUrl {
     throw new Error("A API retornou uma URL de preview inválida.");
   }
   return { url: value.url, expiresAt: value.expiresAt };
+}
+
+export function parseRenderList(value: unknown): readonly ClipRender[] {
+  if (!Array.isArray(value)) {
+    throw new Error("A API retornou um histórico de renders inválido.");
+  }
+  return value.map(parseRender);
+}
+
+export function parseRender(value: unknown): ClipRender {
+  if (
+    !isRecord(value) ||
+    typeof value.id !== "string" ||
+    typeof value.clipId !== "string" ||
+    typeof value.editVersion !== "number" ||
+    !isRenderStatus(value.status) ||
+    typeof value.progress !== "number" ||
+    value.progress < 0 ||
+    value.progress > 100 ||
+    !nullableNumber(value.durationSeconds) ||
+    !nullableNumber(value.width) ||
+    !nullableNumber(value.height) ||
+    !nullableAspectRatio(value.aspectRatio) ||
+    !nullableString(value.errorCode) ||
+    !nullableString(value.errorMessage) ||
+    typeof value.createdAt !== "string" ||
+    typeof value.updatedAt !== "string"
+  ) {
+    throw new Error("A API retornou um render inválido.");
+  }
+  return {
+    id: value.id,
+    clipId: value.clipId,
+    editVersion: value.editVersion,
+    status: value.status,
+    progress: value.progress,
+    durationSeconds: value.durationSeconds as number | null,
+    width: value.width as number | null,
+    height: value.height as number | null,
+    aspectRatio: value.aspectRatio as AspectRatio | null,
+    errorCode: value.errorCode as string | null,
+    errorMessage: value.errorMessage as string | null,
+    createdAt: value.createdAt,
+    updatedAt: value.updatedAt
+  };
 }
 
 function parseCaptionStyle(value: Record<string, unknown>): CaptionStyle {
@@ -195,12 +258,24 @@ function requiredNumber(value: unknown, name: string): number {
   return value;
 }
 
+function nullableNumber(value: unknown): value is number | null {
+  return value === null || (typeof value === "number" && Number.isFinite(value));
+}
+
+function nullableString(value: unknown): value is string | null {
+  return value === null || typeof value === "string";
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
 function isAspectRatio(value: unknown): value is AspectRatio {
   return value === "9:16" || value === "16:9";
+}
+
+function nullableAspectRatio(value: unknown): value is AspectRatio | null {
+  return value === null || isAspectRatio(value);
 }
 
 function isCaptionPreset(value: unknown): value is CaptionPreset {
@@ -216,5 +291,9 @@ function isCaptionAnimation(value: unknown): value is CaptionAnimation {
 }
 
 function isClipStatus(value: unknown): value is ClipStatus {
+  return value === "QUEUED" || value === "PROCESSING" || value === "READY" || value === "FAILED";
+}
+
+function isRenderStatus(value: unknown): value is RenderStatus {
   return value === "QUEUED" || value === "PROCESSING" || value === "READY" || value === "FAILED";
 }

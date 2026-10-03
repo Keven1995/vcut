@@ -1409,6 +1409,59 @@ input:focus {
   gap: 10px;
 }
 
+.render-history {
+  display: grid;
+  gap: 12px;
+  border-top: 1px solid var(--line);
+  padding-top: 18px;
+}
+
+.render-history-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+.render-history-item {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+  border: 1px solid var(--line);
+  padding: 10px;
+  background: #f9f8f2;
+}
+
+.render-history-thumbnail {
+  display: block;
+  width: 72px;
+  height: 72px;
+  background: var(--line);
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: cover;
+}
+
+.render-history-item > div {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.render-history-item span {
+  color: var(--muted);
+  font-size: 0.72rem;
+  line-height: 1.35;
+}
+
+.render-history-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .clip-editor-actions button:disabled,
 .clip-controls > button:disabled {
   cursor: wait;

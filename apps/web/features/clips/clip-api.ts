@@ -1,5 +1,5 @@
 import { apiRequest } from "../../lib/api-client";
-import { parseClip, parseClipPage, parsePreviewUrl, type AspectRatio, type CaptionAnimation, type CaptionPreset, type CaptionPosition, type Clip, type ClipPage, type PreviewUrl } from "./clip-types";
+import { parseClip, parseClipPage, parsePreviewUrl, parseRender, parseRenderList, type AspectRatio, type CaptionAnimation, type CaptionPreset, type CaptionPosition, type Clip, type ClipPage, type ClipRender, type PreviewUrl } from "./clip-types";
 
 export function clipsQueryKey(videoId: string): string {
   return `clips:${videoId}`;
@@ -11,6 +11,14 @@ export function clipQueryKey(clipId: string): string {
 
 export function previewQueryKey(clipId: string): string {
   return `clip-preview:${clipId}`;
+}
+
+export function rendersQueryKey(clipId: string): string {
+  return `clip-renders:${clipId}`;
+}
+
+export function renderThumbnailQueryKey(renderId: string): string {
+  return `clip-render-thumbnail:${renderId}`;
 }
 
 export async function fetchClips(videoId: string): Promise<ClipPage> {
@@ -60,4 +68,27 @@ export async function generateClip(clipId: string): Promise<Clip> {
 
 export async function fetchPreviewUrl(clipId: string): Promise<PreviewUrl> {
   return parsePreviewUrl(await apiRequest<unknown>(`/api/clips/${clipId}/preview-url`));
+}
+
+export async function fetchRenders(clipId: string): Promise<readonly ClipRender[]> {
+  return parseRenderList(await apiRequest<unknown>(`/api/clips/${clipId}/renders`));
+}
+
+export async function requestFinalRender(clipId: string, editVersion: number): Promise<ClipRender> {
+  return parseRender(await apiRequest<unknown>(`/api/clips/${clipId}/renders`, {
+    method: "POST",
+    body: JSON.stringify({ editVersion })
+  }));
+}
+
+export async function retryRender(renderId: string): Promise<ClipRender> {
+  return parseRender(await apiRequest<unknown>(`/api/renders/${renderId}/retry`, { method: "POST" }));
+}
+
+export async function fetchRenderDownloadUrl(renderId: string): Promise<PreviewUrl> {
+  return parsePreviewUrl(await apiRequest<unknown>(`/api/renders/${renderId}/download-url`));
+}
+
+export async function fetchRenderThumbnailUrl(renderId: string): Promise<PreviewUrl> {
+  return parsePreviewUrl(await apiRequest<unknown>(`/api/renders/${renderId}/thumbnail-url`));
 }

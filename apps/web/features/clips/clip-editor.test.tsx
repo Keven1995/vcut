@@ -21,9 +21,16 @@ vi.mock("./clip-api", () => ({
   createClip: vi.fn(),
   fetchClip: vi.fn(),
   fetchClips: vi.fn(),
+  fetchRenderDownloadUrl: vi.fn(),
+  fetchRenderThumbnailUrl: vi.fn(),
   fetchPreviewUrl: vi.fn(),
+  fetchRenders: vi.fn(),
   generateClip: vi.fn(),
   previewQueryKey: (id: string) => `preview:${id}`,
+  renderThumbnailQueryKey: (id: string) => `thumbnail:${id}`,
+  rendersQueryKey: (id: string) => `renders:${id}`,
+  requestFinalRender: vi.fn(),
+  retryRender: vi.fn(),
   updateClip: vi.fn()
 }));
 

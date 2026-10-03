@@ -8,9 +8,16 @@ import {
   createClip,
   fetchClip,
   fetchClips,
+  fetchRenderDownloadUrl,
+  fetchRenderThumbnailUrl,
   fetchPreviewUrl,
+  fetchRenders,
   generateClip,
   previewQueryKey,
+  renderThumbnailQueryKey,
+  rendersQueryKey,
+  requestFinalRender,
+  retryRender,
   updateClip,
   type UpdateClipInput
 } from "./clip-api";
@@ -21,6 +28,7 @@ import {
   type CaptionPosition,
   type Clip,
   type ClipCandidateForEditor,
+  type ClipRender,
   type PreviewUrl
 } from "./clip-types";
 import {
@@ -44,7 +52,7 @@ const defaultRatio: AspectRatio = "9:16";
 export function ClipEditor({ videoId, candidate }: ClipEditorProps) {
   const [clipId, setClipId] = useState<string | null>(null);
   const [draft, setDraft] = useState<EditorDraft>(() => initialDraft(candidate));
-  const [action, setAction] = useState<"create" | "save" | "generate" | null>(null);
+  const [action, setAction] = useState<"create" | "save" | "generate" | "render" | string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [selectedHandle, setSelectedHandle] = useState<TimelineHandle>("start");
   const [playbackSeconds, setPlaybackSeconds] = useState(0);
@@ -64,6 +72,11 @@ export function ClipEditor({ videoId, candidate }: ClipEditorProps) {
     () => fetchPreviewUrl(clipId ?? ""),
     clipId !== null && clipQuery.data?.status === "READY"
   );
+  const rendersQuery = useServerQuery<readonly ClipRender[]>(
+    rendersQueryKey(clipId ?? "new"),
+    () => fetchRenders(clipId ?? ""),
+    clipId !== null
+  );
 
   useEffect(() => {
     const status = clipQuery.data?.status;
@@ -73,6 +86,14 @@ export function ClipEditor({ videoId, candidate }: ClipEditorProps) {
     const timer = window.setTimeout(() => invalidateServerQuery(clipQueryKey(clipId)), 1_500);
     return () => window.clearTimeout(timer);
   }, [clipId, clipQuery.data?.status]);
+
+  useEffect(() => {
+    if (!clipId || !rendersQuery.data?.some((render) => render.status === "QUEUED" || render.status === "PROCESSING")) {
+      return;
+    }
+    const timer = window.setTimeout(() => invalidateServerQuery(rendersQueryKey(clipId)), 1_500);
+    return () => window.clearTimeout(timer);
+  }, [clipId, rendersQuery.data]);
 
   useEffect(() => {
     if (clipId || !clipsQuery.data) {
@@ -140,6 +161,47 @@ export function ClipEditor({ videoId, candidate }: ClipEditorProps) {
       setMessage("Geração enfileirada. O status será atualizado automaticamente.");
     } catch (caught: unknown) {
       setMessage(caught instanceof Error ? caught.message : "Não foi possível gerar o preview.");
+    } finally {
+      setAction(null);
+    }
+  }
+
+  async function requestFinalRenderAction(): Promise<void> {
+    if (!clipId || !clipQuery.data) {
+      return;
+    }
+    setAction("render");
+    try {
+      await requestFinalRender(clipId, clipQuery.data.editVersion);
+      invalidateServerQuery(rendersQueryKey(clipId));
+      setMessage("Render final enfileirado. O histórico será atualizado automaticamente.");
+    } catch (caught: unknown) {
+      setMessage(caught instanceof Error ? caught.message : "Não foi possível renderizar o clip.");
+    } finally {
+      setAction(null);
+    }
+  }
+
+  async function retryFinalRender(renderId: string): Promise<void> {
+    setAction(`retry:${renderId}`);
+    try {
+      await retryRender(renderId);
+      invalidateServerQuery(rendersQueryKey(clipId ?? ""));
+      setMessage("Render reenfileirado.");
+    } catch (caught: unknown) {
+      setMessage(caught instanceof Error ? caught.message : "Não foi possível repetir o render.");
+    } finally {
+      setAction(null);
+    }
+  }
+
+  async function downloadFinalRender(renderId: string): Promise<void> {
+    setAction(`download:${renderId}`);
+    try {
+      const result = await fetchRenderDownloadUrl(renderId);
+      window.open(result.url, "_blank", "noopener,noreferrer");
+    } catch (caught: unknown) {
+      setMessage(caught instanceof Error ? caught.message : "Não foi possível preparar o download.");
     } finally {
       setAction(null);
     }
@@ -345,18 +407,104 @@ export function ClipEditor({ videoId, candidate }: ClipEditorProps) {
               <button className="primary-action" type="button" onClick={() => void requestGeneration()} disabled={isWorking}>
                 {action === "generate" ? "Enfileirando..." : "Gerar preview"}
               </button>
+              <button className="primary-action" type="button" onClick={() => void requestFinalRenderAction()} disabled={isWorking || !clipQuery.data}>
+                {action === "render" ? "Enfileirando..." : "Renderizar final"}
+              </button>
             </div>
           ) : (
             <button className="primary-action" type="button" onClick={() => void createEditableClip()} disabled={isWorking}>
               {action === "create" ? "Criando..." : "Abrir este clip no editor"}
             </button>
           )}
+          {clipId ? (
+            <RenderHistory
+              renders={rendersQuery.data ?? []}
+              action={action}
+              onDownload={(renderId) => void downloadFinalRender(renderId)}
+              onRetry={(renderId) => void retryFinalRender(renderId)}
+            />
+          ) : null}
           {message ? <p className="clip-editor-message" aria-live="polite">{message}</p> : null}
           {clipQuery.error ? <p className="form-error" role="alert">{clipQuery.error.message}</p> : null}
           {clipQuery.data?.status === "FAILED" ? <p className="form-error" role="alert">A geração falhou. Salve os ajustes e tente gerar novamente.</p> : null}
         </div>
       </div>
     </section>
+  );
+}
+
+type RenderHistoryProps = {
+  readonly renders: readonly ClipRender[];
+  readonly action: string | null;
+  readonly onDownload: (renderId: string) => void;
+  readonly onRetry: (renderId: string) => void;
+};
+
+function RenderHistory({ renders, action, onDownload, onRetry }: RenderHistoryProps) {
+  return (
+    <div className="render-history" aria-labelledby="render-history-title">
+      <div className="render-history-heading">
+        <span className="step-label" id="render-history-title">04 / Histórico de renders</span>
+        <span>{renders.length} versão(ões)</span>
+      </div>
+      {renders.length === 0 ? <p className="clip-control-hint">Nenhum render final foi criado ainda.</p> : null}
+      {renders.map((render) => (
+        <RenderHistoryItem
+          key={render.id}
+          render={render}
+          action={action}
+          onDownload={onDownload}
+          onRetry={onRetry}
+        />
+      ))}
+    </div>
+  );
+}
+
+function RenderHistoryItem({
+  render,
+  action,
+  onDownload,
+  onRetry
+}: {
+  readonly render: ClipRender;
+  readonly action: string | null;
+  readonly onDownload: (renderId: string) => void;
+  readonly onRetry: (renderId: string) => void;
+}) {
+  const thumbnailQuery = useServerQuery<PreviewUrl>(
+    renderThumbnailQueryKey(render.id),
+    () => fetchRenderThumbnailUrl(render.id),
+    render.status === "READY"
+  );
+  const isWorking = action !== null;
+  return (
+    <article className="render-history-item">
+      {thumbnailQuery.data ? (
+        <div
+          className="render-history-thumbnail"
+          role="img"
+          aria-label={`Miniatura do render da versão ${render.editVersion}`}
+          style={{ backgroundImage: `url("${thumbnailQuery.data.url}")` }}
+        />
+      ) : null}
+      <div>
+        <strong>Versão {render.editVersion}</strong>
+        <span>{render.status === "FAILED" ? render.errorMessage ?? "Falha no render." : `${render.status} ${render.progress}%`}</span>
+        <div className="render-history-actions">
+          {render.status === "READY" ? (
+            <button className="secondary-action" type="button" onClick={() => onDownload(render.id)} disabled={isWorking}>
+              {action === `download:${render.id}` ? "Preparando..." : "Baixar final"}
+            </button>
+          ) : null}
+          {render.status === "FAILED" ? (
+            <button className="secondary-action" type="button" onClick={() => onRetry(render.id)} disabled={isWorking}>
+              {action === `retry:${render.id}` ? "Reenfileirando..." : "Tentar novamente"}
+            </button>
+          ) : null}
+        </div>
+      </div>
+    </article>
   );
 }
 
