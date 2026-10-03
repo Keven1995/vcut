@@ -2,8 +2,9 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { type FormEvent, useCallback, useEffect, useState } from "react";
-import { ApiClientError, apiRequest, clearAccessToken } from "../../lib/api-client";
+import { type FormEvent, useState } from "react";
+import { apiRequest, clearAccessToken } from "../../lib/api-client";
+import { invalidateServerQuery, useServerQuery } from "../../lib/server-state";
 
 type Project = {
   id: string;
@@ -19,56 +20,31 @@ type ProjectPage = {
 
 export default function DashboardPage() {
   const router = useRouter();
-  const [projects, setProjects] = useState<Project[]>([]);
   const [projectName, setProjectName] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [pending, setPending] = useState(true);
-
-  const handleError = useCallback(
-    (caught: unknown) => {
-      if (caught instanceof ApiClientError && caught.status === 401) {
-        router.push("/login?expired=1");
-        return;
-      }
-      setError(caught instanceof Error ? caught.message : "Não foi possível carregar os projetos.");
-    },
-    [router]
-  );
-
-  const loadProjects = useCallback(async () => {
-    setPending(true);
-    try {
-      const response = await apiRequest<ProjectPage>("/api/projects");
-      setProjects(response.content);
-      setError(null);
-    } catch (caught) {
-      handleError(caught);
-    } finally {
-      setPending(false);
-    }
-  }, [handleError]);
-
-  useEffect(() => {
-    const timer = window.setTimeout(() => void loadProjects(), 0);
-    return () => window.clearTimeout(timer);
-  }, [loadProjects]);
+  const [mutationError, setMutationError] = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);
+  const projectQuery = useServerQuery<ProjectPage>("projects", () => apiRequest<ProjectPage>("/api/projects"));
+  const projects = projectQuery.data?.content ?? [];
+  const pending = projectQuery.isLoading;
+  const error = mutationError ?? projectQuery.error?.message ?? null;
 
   async function createProject(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!projectName.trim()) {
       return;
     }
-    setPending(true);
+    setCreating(true);
     try {
       await apiRequest<Project>("/api/projects", {
         method: "POST",
         body: JSON.stringify({ name: projectName })
       });
       setProjectName("");
-      await loadProjects();
+      invalidateServerQuery("projects");
     } catch (caught) {
-      handleError(caught);
-      setPending(false);
+      setMutationError(caught instanceof Error ? caught.message : "Não foi possível criar o projeto.");
+    } finally {
+      setCreating(false);
     }
   }
 
@@ -108,7 +84,7 @@ export default function DashboardPage() {
               value={projectName}
               onChange={(event) => setProjectName(event.target.value)}
             />
-            <button className="primary-action" type="submit" disabled={pending}>
+            <button className="primary-action" type="submit" disabled={pending || creating}>
               Criar
             </button>
           </div>

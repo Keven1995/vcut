@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { type FormEvent, useCallback, useEffect, useState } from "react";
 import { ApiClientError, apiRequest } from "../../../../../../lib/api-client";
+import { ClipEditor } from "../../../../../../features/clips/clip-editor";
 
 type RunStatus = "QUEUED" | "PROCESSING" | "RETRYING" | "COMPLETED" | "FAILED";
 type DurationPreference = "AUTO" | "SHORT" | "MEDIUM" | "LONG" | "CUSTOM";
@@ -49,6 +50,7 @@ export default function ClipCandidatesPage() {
   const [candidates, setCandidates] = useState<ClipCandidate[]>([]);
   const [pending, setPending] = useState(true);
   const [actionPending, setActionPending] = useState<string | null>(null);
+  const [selectedCandidate, setSelectedCandidate] = useState<ClipCandidate | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const loadAnalysis = useCallback(async (): Promise<void> => {
@@ -124,6 +126,9 @@ export default function ClipCandidatesPage() {
       await apiRequest<null>(`/api/clip-candidates/${candidate.id}/${action}`, { method: "POST" });
       const nextStatus: CandidateStatus = action === "accept" ? "ACCEPTED" : action === "discard" ? "DISCARDED" : "SELECTED";
       setCandidates((current) => current.map((item) => item.id === candidate.id ? { ...item, status: nextStatus } : item));
+      if (action === "select") {
+        setSelectedCandidate(candidate);
+      }
       setError(null);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Nao foi possivel atualizar o candidato.");
@@ -228,6 +233,10 @@ export default function ClipCandidatesPage() {
           </div>
         ) : null}
       </section>
+
+      {selectedCandidate ? (
+        <ClipEditor videoId={params.videoId} candidate={selectedCandidate} />
+      ) : null}
     </main>
   );
 }

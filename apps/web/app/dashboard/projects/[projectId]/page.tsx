@@ -4,35 +4,13 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { type ChangeEvent, type FormEvent, useEffect, useRef, useState } from "react";
 import { apiRequest } from "../../../../lib/api-client";
+import { invalidateServerQuery, useServerQuery } from "../../../../lib/server-state";
+import { fetchJob, jobQueryKey, parseJob, type Job } from "../../../../features/jobs/job-api";
+import { fetchVideo, videoQueryKey, type Video } from "../../../../features/videos/video-api";
 
 const MAX_UPLOAD_BYTES = 512 * 1024 * 1024;
 
 type UploadPhase = "idle" | "creating" | "uploading" | "confirming" | "ready" | "processing" | "failed" | "cancelled";
-
-type Video = {
-  id: string;
-  originalFilename: string;
-  declaredSizeBytes: number;
-  actualSizeBytes: number | null;
-  status: "UPLOADING" | "UPLOADED" | "VALIDATING" | "READY" | "REJECTED" | "FAILED";
-  durationSeconds: number | null;
-  width: number | null;
-  height: number | null;
-  hasAudio: boolean | null;
-  uploadUrl?: string | null;
-};
-
-type JobStatus = "QUEUED" | "PROCESSING" | "COMPLETED" | "FAILED" | "CANCELLED";
-
-type Job = {
-  id: string;
-  videoId: string;
-  status: JobStatus;
-  stage: string;
-  progress: number;
-  errorCode: string | null;
-  errorMessage: string | null;
-};
 
 type UploadState = {
   phase: UploadPhase;
@@ -109,15 +87,31 @@ export default function ProjectUploadPage() {
   const cancelledRef = useRef(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [state, setState] = useState<UploadState>({ phase: "idle", progress: 0, video: null, error: null, job: null });
-  const pollingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const serverVideoId = state.video?.id ?? null;
+  const serverJobId = state.job?.id ?? null;
+  const videoQuery = useServerQuery<Video>(
+    videoQueryKey(serverVideoId ?? "none"),
+    () => fetchVideo(serverVideoId ?? ""),
+    serverVideoId !== null && (state.phase === "ready" || state.phase === "processing")
+  );
+  const jobQuery = useServerQuery<Job>(
+    jobQueryKey(serverJobId ?? "none"),
+    () => fetchJob(serverJobId ?? ""),
+    serverJobId !== null && state.phase === "processing"
+  );
+  const visibleVideo = videoQuery.data ?? state.video;
+  const visibleJob = jobQuery.data ?? state.job;
 
   useEffect(() => {
-    return () => {
-      if (pollingTimerRef.current) {
-        clearTimeout(pollingTimerRef.current);
-      }
-    };
-  }, []);
+    if (!serverJobId || state.phase !== "processing" || !jobQuery.data) {
+      return;
+    }
+    if (jobQuery.data.status === "COMPLETED" || jobQuery.data.status === "FAILED" || jobQuery.data.status === "CANCELLED") {
+      return;
+    }
+    const timer = window.setTimeout(() => invalidateServerQuery(jobQueryKey(serverJobId)), 1_500);
+    return () => window.clearTimeout(timer);
+  }, [jobQuery.data, serverJobId, state.phase]);
 
   function selectFile(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
@@ -184,27 +178,6 @@ export default function ProjectUploadPage() {
     }
   }
 
-  async function pollJob(jobId: string, attempt = 0): Promise<void> {
-    const job = parseJob(await apiRequest<unknown>(`/api/jobs/${jobId}`));
-    setState((current) => ({
-      ...current,
-      phase: job.status === "COMPLETED" ? "ready" : job.status === "FAILED" || job.status === "CANCELLED" ? "failed" : "processing",
-      progress: job.progress,
-      job,
-      error: job.errorMessage
-    }));
-    if (job.status === "COMPLETED" || job.status === "FAILED" || job.status === "CANCELLED") {
-      return;
-    }
-    const delay = Math.min(8_000, 1_000 * 2 ** Math.min(attempt, 3));
-    pollingTimerRef.current = setTimeout(() => {
-      void pollJob(jobId, attempt + 1).catch((caught: unknown) => {
-        const message = caught instanceof Error ? caught.message : "Nao foi possivel consultar o processamento.";
-        setState((current) => ({ ...current, phase: "failed", error: message }));
-      });
-    }, delay);
-  }
-
   async function processVideo(): Promise<void> {
     if (!state.video) {
       return;
@@ -212,7 +185,6 @@ export default function ProjectUploadPage() {
     try {
       const job = parseJob(await apiRequest<unknown>(`/api/videos/${state.video.id}/process`, { method: "POST" }));
       setState((current) => ({ ...current, phase: "processing", progress: job.progress, job, error: null }));
-      await pollJob(job.id);
     } catch (caught) {
       const message = caught instanceof Error ? caught.message : "Nao foi possivel iniciar o processamento.";
       setState((current) => ({ ...current, phase: "failed", error: message }));
@@ -247,8 +219,16 @@ export default function ProjectUploadPage() {
     await startUpload(fileRef.current);
   }
 
-  const isBusy = state.phase === "creating" || state.phase === "uploading" || state.phase === "confirming" || state.phase === "processing";
-  const isUploadBusy = state.phase === "creating" || state.phase === "uploading" || state.phase === "confirming";
+  const renderPhase: UploadPhase =
+    visibleJob?.status === "COMPLETED"
+      ? "ready"
+      : visibleJob?.status === "FAILED" || visibleJob?.status === "CANCELLED"
+        ? "failed"
+        : state.phase;
+  const renderProgress = visibleJob?.progress ?? state.progress;
+  const renderError = visibleJob?.errorMessage ?? state.error;
+  const isBusy = renderPhase === "creating" || renderPhase === "uploading" || renderPhase === "confirming" || renderPhase === "processing";
+  const isUploadBusy = renderPhase === "creating" || renderPhase === "uploading" || renderPhase === "confirming";
 
   return (
     <main className="dashboard-shell upload-shell">
@@ -282,40 +262,40 @@ export default function ProjectUploadPage() {
         </form>
         <div className="upload-status" aria-live="polite">
           <div className="upload-status-line">
-            <span>{phaseLabel(state.phase)}</span>
-            {isBusy || state.phase === "ready" ? <strong>{state.progress}%</strong> : null}
+            <span>{phaseLabel(renderPhase)}</span>
+            {isBusy || renderPhase === "ready" ? <strong>{renderProgress}%</strong> : null}
           </div>
           {isBusy || state.phase === "ready" ? (
-            <div className="progress-track" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={state.progress}>
-              <span style={{ width: `${state.progress}%` }} />
+            <div className="progress-track" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={renderProgress}>
+              <span style={{ width: `${renderProgress}%` }} />
             </div>
           ) : null}
           {isUploadBusy ? <button className="quiet-action upload-cancel" type="button" onClick={cancelUpload}>Cancelar</button> : null}
-          {state.phase === "failed" ? (
+          {renderPhase === "failed" ? (
             <div className="upload-failure">
-              <p className="form-error" role="alert">{state.error}</p>
+              <p className="form-error" role="alert">{renderError}</p>
               <button className="quiet-action" type="button" onClick={() => void retryUpload()}>Tentar novamente</button>
             </div>
           ) : null}
-          {state.phase === "cancelled" ? <p className="upload-note">Upload cancelado. O arquivo local continua selecionado.</p> : null}
-          {state.phase === "ready" && state.video ? (
+          {renderPhase === "cancelled" ? <p className="upload-note">Upload cancelado. O arquivo local continua selecionado.</p> : null}
+          {renderPhase === "ready" && visibleVideo ? (
             <div className="video-ready">
-              <span className="project-status">{state.job?.status === "COMPLETED" ? "Processado" : "Confirmado"}</span>
-              <strong>{state.video.originalFilename}</strong>
-              <span>{formatBytes(state.video.actualSizeBytes ?? state.video.declaredSizeBytes)} / {state.job?.status === "COMPLETED" ? "validacao concluida" : "aguardando processamento"}</span>
-              {!state.job ? <button className="primary-action upload-submit" type="button" onClick={() => void processVideo()}>Processar video <span aria-hidden="true">↗</span></button> : null}
-              {state.job?.status === "COMPLETED" ? (
-                <Link className="quiet-action" href={`/dashboard/projects/${params.projectId}/transcription/${state.video.id}`}>
+              <span className="project-status">{visibleJob?.status === "COMPLETED" ? "Processado" : "Confirmado"}</span>
+              <strong>{visibleVideo.originalFilename}</strong>
+              <span>{formatBytes(visibleVideo.actualSizeBytes ?? visibleVideo.declaredSizeBytes)} / {visibleJob?.status === "COMPLETED" ? "validacao concluida" : "aguardando processamento"}</span>
+              {!visibleJob ? <button className="primary-action upload-submit" type="button" onClick={() => void processVideo()}>Processar video <span aria-hidden="true">↗</span></button> : null}
+              {visibleJob?.status === "COMPLETED" ? (
+                <Link className="quiet-action" href={`/dashboard/projects/${params.projectId}/transcription/${visibleVideo.id}`}>
                   Abrir transcricao
                 </Link>
               ) : null}
             </div>
           ) : null}
-          {state.phase === "processing" && state.job ? (
+          {renderPhase === "processing" && visibleJob ? (
             <div className="video-ready">
-              <span className="project-status">{state.job.stage}</span>
+              <span className="project-status">{visibleJob.stage}</span>
               <strong>Processamento em andamento</strong>
-              <span>{state.job.progress}% / consultando o job com backoff</span>
+              <span>{visibleJob.progress}% / consultando o job com cache</span>
             </div>
           ) : null}
         </div>
@@ -323,28 +303,4 @@ export default function ProjectUploadPage() {
       <p className="upload-footnote">O arquivo fica associado somente a este projeto e usuario. URLs assinadas expiram automaticamente.</p>
     </main>
   );
-}
-
-function parseJob(value: unknown): Job {
-  if (typeof value !== "object" || value === null) {
-    throw new Error("A API retornou um job invalido.");
-  }
-  const record = value as Record<string, unknown>;
-  const status = record.status;
-  if (typeof record.id !== "string" || typeof record.videoId !== "string" || typeof record.stage !== "string" || typeof record.progress !== "number" || !isJobStatus(status)) {
-    throw new Error("A API retornou um job invalido.");
-  }
-  return {
-    id: record.id,
-    videoId: record.videoId,
-    status,
-    stage: record.stage,
-    progress: record.progress,
-    errorCode: typeof record.errorCode === "string" ? record.errorCode : null,
-    errorMessage: typeof record.errorMessage === "string" ? record.errorMessage : null
-  };
-}
-
-function isJobStatus(value: unknown): value is JobStatus {
-  return value === "QUEUED" || value === "PROCESSING" || value === "COMPLETED" || value === "FAILED" || value === "CANCELLED";
 }
