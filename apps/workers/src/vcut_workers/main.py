@@ -10,6 +10,7 @@ from vcut_workers.observability import configure_logging
 from vcut_workers.worker.rabbitmq import (
     create_clip_analysis_worker,
     create_clip_generation_worker,
+    create_final_render_worker,
     create_transcription_worker,
     create_video_validation_worker,
 )
@@ -38,6 +39,11 @@ def main() -> None:
             Thread(
                 target=create_clip_generation_worker(settings).run_forever,
                 name="rabbitmq-clip-generation-consumer",
+                daemon=True,
+            ).start()
+            Thread(
+                target=create_final_render_worker(settings).run_forever,
+                name="rabbitmq-final-render-consumer",
                 daemon=True,
             ).start()
     if os.getenv("WORKER_RUN_ONCE") == "true":

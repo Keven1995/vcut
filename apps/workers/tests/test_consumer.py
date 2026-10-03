@@ -240,6 +240,33 @@ def test_consumer_acknowledges_only_after_typed_result_and_stage_update() -> Non
     asyncio.run(_test_consumer_acknowledges_only_after_typed_result_and_stage_update())
 
 
+def test_progress_handler_publishes_monotonic_stage_progress() -> None:
+    updater = FakeStageRunUpdater()
+
+    def progressive_handler(
+        command: ValidateVideoCommand, report: Callable[[float], None]
+    ) -> VideoValidationResult:
+        del command
+        report(25)
+        report(10)
+        report(75)
+        return result()
+
+    worker = ConsumerBase(
+        ValidateVideoCommand,
+        VideoValidationResult,
+        lambda command: result(),
+        InMemoryIdempotencyStore(),
+        stage_run_updater=updater,
+        progress_handler=progressive_handler,
+    )
+
+    outcome = asyncio.run(worker.consume(FakeDelivery(body())))
+
+    assert outcome.status is ConsumerStatus.SUCCEEDED
+    assert [update.progress for update in updater.updates] == [0, 25, 75, 100]
+
+
 async def _test_duplicate_delivery_is_acknowledged_without_reexecuting() -> None:
     calls = 0
 

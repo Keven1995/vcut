@@ -11,11 +11,13 @@ from pydantic import BaseModel, ValidationError
 
 from vcut_workers.application.clip_analysis import GenerateClipCandidatesUseCase
 from vcut_workers.application.clip_generation import ClipGenerationLimits, GenerateClipUseCase
+from vcut_workers.application.final_render import FinalRenderUseCase
 from vcut_workers.application.transcription import TranscribeAudioUseCase, TranscriptionCommand
 from vcut_workers.application.video_validation import ValidateUploadedVideoUseCase
 from vcut_workers.config import WorkerSettings
 from vcut_workers.contracts.clip_analysis import AnalyzeClipsCommand, AnalyzeClipsResult
 from vcut_workers.contracts.clip_generation import ClipGenerationCommand, ClipGenerationResult
+from vcut_workers.contracts.final_render import FinalRenderCommand, FinalRenderResult
 from vcut_workers.contracts.messaging import (
     MessageEnvelope,
     MessageKind,
@@ -44,6 +46,7 @@ from vcut_workers.infrastructure.transcription.whisper import WhisperTranscripti
 from vcut_workers.worker.consumer import (
     ConsumerBase,
     MessageDelivery,
+    ProgressHandler,
     ResultPublisher,
     RetryPublisher,
 )
@@ -173,6 +176,32 @@ class PikaPublisher(RetryPublisher, ResultPublisher):
                 self._result_event_type,
             )
             self._publish_result(failure_body)
+        elif self._result_event_type == "FinalRenderCompleted":
+            try:
+                final_command = FinalRenderCommand.model_validate(envelope.data)
+            except ValidationError:
+                return
+            final_failure = FinalRenderResult(
+                render_id=final_command.render_id,
+                clip_id=final_command.clip_id,
+                edit_version=final_command.edit_version,
+                status="FAILED",
+                duration_seconds=0,
+                width=0,
+                height=0,
+                aspect_ratio=final_command.aspect_ratio,
+                error_code=error.code,
+                error_message=error.message,
+            )
+            failure_body = _result_envelope(
+                envelope,
+                cast(
+                    dict[str, object],
+                    final_failure.model_dump(mode="json", by_alias=True, exclude_none=True),
+                ),
+                self._result_event_type,
+            )
+            self._publish_result(failure_body)
 
     async def publish_result(self, envelope: MessageEnvelope, result: BaseModel) -> None:
         data = cast(
@@ -214,6 +243,7 @@ class RabbitMqWorker(Generic[CommandModelT, ResultModelT]):
         command_routing_key: str,
         result_routing_key: str,
         result_event_type: str,
+        progress_handler: ProgressHandler[CommandModelT, ResultModelT] | None = None,
     ) -> None:
         self._settings = settings
         self._command_type = command_type
@@ -223,6 +253,7 @@ class RabbitMqWorker(Generic[CommandModelT, ResultModelT]):
         self._command_routing_key = command_routing_key
         self._result_routing_key = result_routing_key
         self._result_event_type = result_event_type
+        self._progress_handler = progress_handler
 
     def run_forever(self) -> None:
         credentials = pika.PlainCredentials(
@@ -275,6 +306,7 @@ class RabbitMqWorker(Generic[CommandModelT, ResultModelT]):
             retry_publisher=publisher,
             result_publisher=publisher,
             stage_run_updater=publisher,
+            progress_handler=self._progress_handler,
         )
 
         def on_message(
@@ -421,6 +453,45 @@ def create_clip_generation_worker(
         command_routing_key="pipeline.video.generate-clip",
         result_routing_key=settings.rabbitmq_clip_generation_result_routing_key,
         result_event_type="ClipGenerationCompleted",
+    )
+
+
+def create_final_render_worker(
+    settings: WorkerSettings,
+) -> RabbitMqWorker[FinalRenderCommand, FinalRenderResult]:
+    storage = S3ObjectStorage(settings)
+    processor = FFmpegVideoProcessor(
+        settings.ffmpeg_binary,
+        execution_limits=FFmpegExecutionLimits(
+            timeout_seconds=settings.ffmpeg_timeout_seconds,
+            max_temp_bytes=settings.ffmpeg_max_temp_bytes,
+            max_memory_bytes=settings.ffmpeg_max_memory_bytes,
+        ),
+    )
+    use_case = FinalRenderUseCase(
+        storage,
+        processor,
+        ClipGenerationLimits(
+            max_input_size_bytes=settings.clip_max_input_size_bytes,
+            max_duration_seconds=settings.clip_max_duration_seconds,
+            duration_tolerance_seconds=settings.clip_duration_tolerance_seconds,
+            max_caption_cues=settings.clip_max_caption_cues,
+            vertical_width=settings.clip_vertical_width,
+            vertical_height=settings.clip_vertical_height,
+            horizontal_width=settings.clip_horizontal_width,
+            horizontal_height=settings.clip_horizontal_height,
+        ),
+    )
+    return RabbitMqWorker(
+        settings,
+        FinalRenderCommand,
+        FinalRenderResult,
+        use_case.execute,
+        command_queue=settings.rabbitmq_final_render_queue,
+        command_routing_key="pipeline.video.final-render",
+        result_routing_key=settings.rabbitmq_final_render_result_routing_key,
+        result_event_type="FinalRenderCompleted",
+        progress_handler=use_case.execute,
     )
 
 

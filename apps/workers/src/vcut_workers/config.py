@@ -36,6 +36,9 @@ class WorkerSettings(BaseModel):
     rabbitmq_clip_generation_queue: str = Field(
         default="vcut.pipeline.commands.clip-generation", min_length=1
     )
+    rabbitmq_final_render_queue: str = Field(
+        default="vcut.pipeline.commands.final-render", min_length=1
+    )
     rabbitmq_command_exchange: str = Field(default="vcut.pipeline.commands", min_length=1)
     rabbitmq_retry_exchange: str = Field(default="vcut.pipeline.retry", min_length=1)
     rabbitmq_dead_letter_exchange: str = Field(default="vcut.pipeline.dlx", min_length=1)
@@ -51,6 +54,9 @@ class WorkerSettings(BaseModel):
     )
     rabbitmq_clip_generation_result_routing_key: str = Field(
         default="pipeline.video.clip-generation.completed", min_length=1
+    )
+    rabbitmq_final_render_result_routing_key: str = Field(
+        default="pipeline.video.final-render.completed", min_length=1
     )
     rabbitmq_enabled: bool = True
     storage_endpoint: str = Field(default="http://localhost:9000", min_length=1)
@@ -106,6 +112,9 @@ class WorkerSettings(BaseModel):
             rabbitmq_clip_generation_queue=os.getenv(
                 "RABBITMQ_CLIP_GENERATION_QUEUE", "vcut.pipeline.commands.clip-generation"
             ),
+            rabbitmq_final_render_queue=os.getenv(
+                "RABBITMQ_FINAL_RENDER_QUEUE", "vcut.pipeline.commands.final-render"
+            ),
             rabbitmq_transcription_result_routing_key=os.getenv(
                 "RABBITMQ_TRANSCRIPTION_RESULT_ROUTING_KEY",
                 "pipeline.video.transcription.completed",
@@ -117,6 +126,10 @@ class WorkerSettings(BaseModel):
             rabbitmq_clip_generation_result_routing_key=os.getenv(
                 "RABBITMQ_CLIP_GENERATION_RESULT_ROUTING_KEY",
                 "pipeline.video.clip-generation.completed",
+            ),
+            rabbitmq_final_render_result_routing_key=os.getenv(
+                "RABBITMQ_FINAL_RENDER_RESULT_ROUTING_KEY",
+                "pipeline.video.final-render.completed",
             ),
             rabbitmq_enabled=os.getenv("RABBITMQ_ENABLED", "true").lower() == "true",
             storage_endpoint=os.getenv("OBJECT_STORAGE_ENDPOINT", "http://localhost:9000"),

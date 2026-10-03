@@ -1,6 +1,6 @@
 import asyncio
 import inspect
-from collections.abc import Awaitable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import Generic, Protocol, TypeVar
@@ -29,6 +29,10 @@ CommandModelT = TypeVar("CommandModelT", bound=BaseModel)
 ResultModelT = TypeVar("ResultModelT", bound=BaseModel)
 HandlerCommandT = TypeVar("HandlerCommandT", bound=BaseModel, contravariant=True)
 HandlerResultT = TypeVar("HandlerResultT", bound=BaseModel, covariant=True)
+ProgressCallback = Callable[[float], None]
+ProgressHandler = Callable[
+    [CommandModelT, ProgressCallback], ResultModelT | Awaitable[ResultModelT]
+]
 
 
 class CommandHandler(Protocol[HandlerCommandT, HandlerResultT]):
@@ -99,6 +103,7 @@ class ConsumerBase(Generic[CommandModelT, ResultModelT]):
         retry_publisher: RetryPublisher | None = None,
         result_publisher: ResultPublisher | None = None,
         stage_run_updater: StageRunUpdater | None = None,
+        progress_handler: ProgressHandler[CommandModelT, ResultModelT] | None = None,
     ) -> None:
         if timeout_seconds <= 0:
             raise ValueError("timeout_seconds must be positive")
@@ -111,6 +116,7 @@ class ConsumerBase(Generic[CommandModelT, ResultModelT]):
         self._retry_publisher = retry_publisher
         self._result_publisher = result_publisher
         self._stage_run_updater = stage_run_updater
+        self._progress_handler = progress_handler
 
     async def consume(self, delivery: MessageDelivery) -> ConsumerOutcome[ResultModelT]:
         try:
@@ -141,8 +147,12 @@ class ConsumerBase(Generic[CommandModelT, ResultModelT]):
 
         try:
             await self._update_stage(envelope, StageRunStatus.PROCESSING, progress=0)
-            result = await self._execute(command)
+            result, progress_updates = await self._execute(command)
             result = self._result_type.model_validate(result)
+            for progress_value in progress_updates:
+                await self._update_stage(
+                    envelope, StageRunStatus.PROCESSING, progress=progress_value
+                )
             await self._update_stage(envelope, StageRunStatus.COMPLETED, progress=100)
             if self._result_publisher is not None:
                 await self._result_publisher.publish_result(envelope, result)
@@ -153,21 +163,43 @@ class ConsumerBase(Generic[CommandModelT, ResultModelT]):
         await delivery.ack()
         return ConsumerOutcome(ConsumerStatus.SUCCEEDED, result=result)
 
-    async def _execute(self, command: CommandModelT) -> ResultModelT:
+    async def _execute(self, command: CommandModelT) -> tuple[ResultModelT, tuple[float, ...]]:
+        progress_updates: list[float] = []
+        last_progress = 0.0
+
+        def report(progress: float) -> None:
+            nonlocal last_progress
+            if progress < 0 or progress > 100:
+                raise ValueError("progress must be between 0 and 100")
+            monotonic_progress = min(99.0, max(last_progress, progress))
+            if monotonic_progress > last_progress:
+                progress_updates.append(monotonic_progress)
+                last_progress = monotonic_progress
+
         async def invoke() -> ResultModelT:
-            is_async_handler = inspect.iscoroutinefunction(
-                self._handler
-            ) or inspect.iscoroutinefunction(self._handler.__call__)
-            value = (
-                self._handler(command)
-                if is_async_handler
-                else await asyncio.to_thread(self._handler, command)
-            )
+            if self._progress_handler is not None:
+                progress_handler = self._progress_handler
+                is_async_handler = inspect.iscoroutinefunction(progress_handler)
+                value = (
+                    progress_handler(command, report)
+                    if is_async_handler
+                    else await asyncio.to_thread(progress_handler, command, report)
+                )
+            else:
+                command_handler = self._handler
+                is_async_handler = inspect.iscoroutinefunction(
+                    command_handler
+                ) or inspect.iscoroutinefunction(command_handler.__call__)
+                value = (
+                    command_handler(command)
+                    if is_async_handler
+                    else await asyncio.to_thread(command_handler, command)
+                )
             if inspect.isawaitable(value):
                 return await value
             return value
 
-        return await asyncio.wait_for(invoke(), timeout=self._timeout_seconds)
+        return await asyncio.wait_for(invoke(), timeout=self._timeout_seconds), tuple(progress_updates)
 
     async def _handle_failure(
         self,
