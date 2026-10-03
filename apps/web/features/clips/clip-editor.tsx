@@ -23,6 +23,13 @@ import {
   type ClipCandidateForEditor,
   type PreviewUrl
 } from "./clip-types";
+import {
+  captionAtTime,
+  formatTimelineTime,
+  type TimelineHandle
+} from "./clip-editor-utils";
+import { ClipTimeline } from "./clip-timeline";
+import { ClipPreviewPlayer } from "./clip-preview-player";
 
 type ClipEditorProps = {
   readonly videoId: string;
@@ -39,6 +46,8 @@ export function ClipEditor({ videoId, candidate }: ClipEditorProps) {
   const [draft, setDraft] = useState<EditorDraft>(() => initialDraft(candidate));
   const [action, setAction] = useState<"create" | "save" | "generate" | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [selectedHandle, setSelectedHandle] = useState<TimelineHandle>("start");
+  const [playbackSeconds, setPlaybackSeconds] = useState(0);
 
   const clipQuery = useServerQuery<Clip>(
     clipQueryKey(clipId ?? "new"),
@@ -65,6 +74,21 @@ export function ClipEditor({ videoId, candidate }: ClipEditorProps) {
     return () => window.clearTimeout(timer);
   }, [clipId, clipQuery.data?.status]);
 
+  useEffect(() => {
+    if (clipId || !clipsQuery.data) {
+      return;
+    }
+    const existing = clipsQuery.data.content.find((clip) => clip.candidateId === candidate.id);
+    if (existing) {
+      const timer = window.setTimeout(() => {
+        setClipId(existing.id);
+        setDraft(draftFromClip(existing));
+        setMessage("Versão editável restaurada. Você pode continuar de onde parou.");
+      }, 0);
+      return () => window.clearTimeout(timer);
+    }
+  }, [candidate.id, clipId, clipsQuery.data]);
+
   async function createEditableClip(): Promise<void> {
     setAction("create");
     try {
@@ -86,11 +110,17 @@ export function ClipEditor({ videoId, candidate }: ClipEditorProps) {
     }
     setAction("save");
     try {
-      await updateClip(clipId, draft);
-      invalidateServerQuery(clipQueryKey(clipId));
+       const currentClip = clipQuery.data;
+       if (!currentClip) {
+         setMessage("A versão atual ainda não foi carregada. Tente novamente.");
+         return;
+       }
+       const savedClip = await updateClip(clipId, draft, currentClip.editVersion);
+       setDraft(draftFromClip(savedClip));
+       invalidateServerQuery(clipQueryKey(clipId));
       invalidateServerQuery(clipsQueryKey(videoId));
       invalidateServerQuery(previewQueryKey(clipId));
-      setMessage("Alteração salva como uma nova versão editável.");
+       setMessage(`Alteração salva como a versão ${savedClip.editVersion}. Preview anterior invalidado.`);
     } catch (caught: unknown) {
       setMessage(caught instanceof Error ? caught.message : "Não foi possível salvar o clip.");
     } finally {
@@ -121,7 +151,8 @@ export function ClipEditor({ videoId, candidate }: ClipEditorProps) {
 
   const maxSeconds = Math.max(90, Math.ceil(Math.max(candidate.endSeconds, draft.endSeconds) + 1));
   const currentStatus = clipQuery.data?.status ?? "DRAFT";
-  const isWorking = action !== null || clipQuery.isFetching;
+  const isWorking = action !== null;
+  const activeCaption = captionAtTime(clipQuery.data?.captionCues ?? [], playbackSeconds);
 
   return (
     <section className="clip-editor" aria-labelledby="clip-editor-title">
@@ -129,19 +160,24 @@ export function ClipEditor({ videoId, candidate }: ClipEditorProps) {
         <div>
           <p className="eyebrow">Editor / {candidate.title}</p>
           <h2 id="clip-editor-title">Dê forma ao primeiro corte.</h2>
-          <p>O enquadramento centralizado é o fallback atual. Smart crop entra depois sem alterar esta versão.</p>
+           <p>Use a timeline e o enquadramento manual para preparar este clip. Smart crop automatizado entra depois sem alterar esta versão.</p>
         </div>
         <div className="clip-editor-status">
-          <span className="project-status">{currentStatus}</span>
-          <span>{clipsQuery.data?.totalElements ?? 0} clips neste vídeo</span>
+           <span className="project-status">{currentStatus}</span>
+           {clipQuery.data ? <span>Versão {clipQuery.data.editVersion}</span> : null}
+           <span>{clipsQuery.data?.totalElements ?? 0} clips neste vídeo</span>
         </div>
       </div>
 
       <div className="clip-editor-layout">
         <div className="clip-preview-column">
           <div className={`clip-preview clip-preview-${draft.aspectRatio === "9:16" ? "portrait" : "landscape"}`}>
-            {previewQuery.data ? (
-              <video controls src={previewQuery.data.url} aria-label="Preview do clip" />
+            {previewQuery.data && currentStatus === "READY" ? (
+              <ClipPreviewPlayer
+                caption={activeCaption?.text ?? draft.captionText}
+                src={previewQuery.data.url}
+                onTimeUpdate={setPlaybackSeconds}
+              />
             ) : (
               <div className="clip-preview-art">
                 <span className="clip-preview-grid" aria-hidden="true" />
@@ -162,41 +198,39 @@ export function ClipEditor({ videoId, candidate }: ClipEditorProps) {
             )}
             <span className="clip-preview-ratio">{draft.aspectRatio}</span>
           </div>
-          <div className="clip-timeline" aria-label="Timeline do clip">
-            <div className="clip-timeline-labels">
-              <span>{formatTime(draft.startSeconds)}</span>
-              <strong>{formatTime(draft.endSeconds - draft.startSeconds)} de duração</strong>
-              <span>{formatTime(draft.endSeconds)}</span>
+          <ClipTimeline
+            durationSeconds={maxSeconds}
+            endSeconds={draft.endSeconds}
+            selectedHandle={selectedHandle}
+            startSeconds={draft.startSeconds}
+            onChange={(interval) => {
+              updateDraft("startSeconds", interval.startSeconds);
+              updateDraft("endSeconds", interval.endSeconds);
+            }}
+            onSelectHandle={setSelectedHandle}
+           />
+          {clipQuery.data?.captionCues.length ? (
+            <div className="clip-transcript" aria-label="Transcrição visível do clip">
+              <span className="step-label">03 / Transcrição visível</span>
+              <div className="clip-transcript-cues">
+                {clipQuery.data.captionCues.map((cue) => (
+                  <span className={cue.id === activeCaption?.id ? "active" : ""} key={cue.id}>
+                    <small>{formatTimelineTime(cue.startSeconds)}</small>
+                    {cue.text}
+                  </span>
+                ))}
+              </div>
             </div>
-            <input
-              aria-label="Início do clip"
-              type="range"
-              min="0"
-              max={maxSeconds}
-              step="0.1"
-              value={draft.startSeconds}
-              onChange={(event) => {
-                const value = Number(event.target.value);
-                if (value < draft.endSeconds - 0.1) {
-                  updateDraft("startSeconds", value);
-                }
-              }}
-            />
-            <input
-              aria-label="Fim do clip"
-              type="range"
-              min="0.1"
-              max={maxSeconds}
-              step="0.1"
-              value={draft.endSeconds}
-              onChange={(event) => {
-                const value = Number(event.target.value);
-                if (value > draft.startSeconds + 0.1) {
-                  updateDraft("endSeconds", value);
-                }
-              }}
-            />
-          </div>
+          ) : null}
+          {currentStatus !== "READY" && clipId ? (
+            <div className="clip-preview-progress" role="status" aria-live="polite">
+              <span>Preview {currentStatus === "FAILED" ? "falhou" : "em processamento"}</span>
+              <strong>{clipQuery.data?.progress ?? 0}%</strong>
+              <div className="clip-progress-bar" aria-hidden="true">
+                <span style={{ width: `${clipQuery.data?.progress ?? 0}%` }} />
+              </div>
+            </div>
+          ) : null}
         </div>
 
         <div className="clip-controls">
@@ -273,6 +307,26 @@ export function ClipEditor({ videoId, candidate }: ClipEditorProps) {
             </label>
           </div>
 
+          <div className="clip-control-group clip-crop-controls">
+            <span className="step-label">02 / Enquadramento manual</span>
+            <p className="clip-control-hint">A posição usa coordenadas normalizadas: esquerda/topo são 0 e direita/base são 1.</p>
+            <label className="clip-control-label">
+              Posição horizontal
+              <input type="range" min="0" max="1" step="0.01" value={draft.cropX} onChange={(event) => updateDraft("cropX", Number(event.target.value))} />
+              <output>{draft.cropX.toFixed(2)}</output>
+            </label>
+            <label className="clip-control-label">
+              Posição vertical
+              <input type="range" min="0" max="1" step="0.01" value={draft.cropY} onChange={(event) => updateDraft("cropY", Number(event.target.value))} />
+              <output>{draft.cropY.toFixed(2)}</output>
+            </label>
+            <label className="clip-control-label">
+              Zoom
+              <input type="range" min="1" max="3" step="0.05" value={draft.cropZoom} onChange={(event) => updateDraft("cropZoom", Number(event.target.value))} />
+              <output>{draft.cropZoom.toFixed(2)}x</output>
+            </label>
+          </div>
+
           <label className="clip-control-label">
             Animação
             <select value={draft.animation} onChange={(event) => updateDraft("animation", event.target.value as CaptionAnimation)}>
@@ -311,6 +365,9 @@ function initialDraft(candidate: ClipCandidateForEditor): EditorDraft {
     startSeconds: candidate.startSeconds,
     endSeconds: candidate.endSeconds,
     aspectRatio: defaultRatio,
+    cropX: 0.5,
+    cropY: 0.5,
+    cropZoom: 1,
     captionPreset: defaultPreset,
     captionText: candidate.title,
     fontFamily: "Inter",
@@ -329,6 +386,9 @@ function draftFromClip(clip: Clip): EditorDraft {
     startSeconds: clip.startSeconds,
     endSeconds: clip.endSeconds,
     aspectRatio: clip.aspectRatio,
+    cropX: clip.crop.x,
+    cropY: clip.crop.y,
+    cropZoom: clip.crop.zoom,
     captionPreset: clip.captionPreset,
     captionText: clip.captionCues.map((cue) => cue.text).join(" "),
     fontFamily: clip.captionStyle.fontFamily,
@@ -340,10 +400,4 @@ function draftFromClip(clip: Clip): EditorDraft {
     position: clip.captionStyle.position,
     animation: clip.captionStyle.animation
   };
-}
-
-function formatTime(seconds: number): string {
-  const minutes = Math.floor(seconds / 60);
-  const remainder = Math.floor(seconds % 60).toString().padStart(2, "0");
-  return `${minutes}:${remainder}`;
 }

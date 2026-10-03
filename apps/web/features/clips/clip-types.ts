@@ -15,6 +15,12 @@ export type CaptionStyle = {
   readonly animation: CaptionAnimation;
 };
 
+export type CropSettings = {
+  readonly x: number;
+  readonly y: number;
+  readonly zoom: number;
+};
+
 export type CaptionCue = {
   readonly id: string;
   readonly text: string;
@@ -27,10 +33,12 @@ export type Clip = {
   readonly videoId: string;
   readonly candidateId: string;
   readonly status: ClipStatus;
+  readonly progress: number;
   readonly editVersion: number;
   readonly startSeconds: number;
   readonly endSeconds: number;
   readonly aspectRatio: AspectRatio;
+  readonly crop: CropSettings;
   readonly captionPreset: CaptionPreset;
   readonly captionStyle: CaptionStyle;
   readonly captionCues: readonly CaptionCue[];
@@ -78,6 +86,9 @@ export function parseClip(value: unknown): Clip {
     typeof value.videoId !== "string" ||
     typeof value.candidateId !== "string" ||
     !isClipStatus(value.status) ||
+    typeof value.progress !== "number" ||
+    value.progress < 0 ||
+    value.progress > 100 ||
     typeof value.editVersion !== "number" ||
     typeof value.startSeconds !== "number" ||
     typeof value.endSeconds !== "number" ||
@@ -95,10 +106,12 @@ export function parseClip(value: unknown): Clip {
     videoId: value.videoId,
     candidateId: value.candidateId,
     status: value.status,
+    progress: value.progress,
     editVersion: value.editVersion,
     startSeconds: value.startSeconds,
     endSeconds: value.endSeconds,
     aspectRatio: value.aspectRatio,
+    crop: parseCropSettings(value.crop),
     captionPreset: value.captionPreset,
     captionStyle: parseCaptionStyle(value.captionStyle),
     captionCues: value.captionCues.map(parseCaptionCue),
@@ -137,6 +150,24 @@ function parseCaptionStyle(value: Record<string, unknown>): CaptionStyle {
     position: value.position,
     animation: value.animation
   };
+}
+
+function parseCropSettings(value: unknown): CropSettings {
+  if (
+    !isRecord(value) ||
+    typeof value.x !== "number" ||
+    typeof value.y !== "number" ||
+    typeof value.zoom !== "number" ||
+    value.x < 0 ||
+    value.x > 1 ||
+    value.y < 0 ||
+    value.y > 1 ||
+    value.zoom < 1 ||
+    value.zoom > 3
+  ) {
+    throw new Error("A API retornou configurações de crop inválidas.");
+  }
+  return { x: value.x, y: value.y, zoom: value.zoom };
 }
 
 function parseCaptionCue(value: unknown): CaptionCue {

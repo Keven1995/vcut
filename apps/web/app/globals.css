@@ -1095,6 +1095,31 @@ input:focus {
   object-fit: cover;
 }
 
+.clip-preview-player {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+.clip-preview-player video {
+  display: block;
+}
+
+.clip-preview-live-caption {
+  position: absolute;
+  right: 8%;
+  bottom: 12%;
+  left: 8%;
+  padding: 8px 12px;
+  color: var(--paper);
+  background: rgba(0, 0, 0, 0.62);
+  font-weight: 700;
+  line-height: 1.05;
+  text-align: center;
+  overflow-wrap: anywhere;
+  pointer-events: none;
+}
+
 .clip-preview-art {
   position: relative;
   display: grid;
@@ -1166,11 +1191,140 @@ input:focus {
   text-transform: uppercase;
 }
 
-.clip-timeline input[type="range"] {
+.clip-timeline-track {
+  position: relative;
+  height: 58px;
+  margin: 22px 4px 0;
+  border: 1px solid var(--line);
+  background: rgba(32, 60, 58, 0.14);
+}
+
+.clip-timeline-track::before {
+  position: absolute;
+  top: 25px;
+  right: 0;
+  left: 0;
+  height: 7px;
+  background: var(--line);
+  content: "";
+}
+
+.clip-timeline-selection {
+  position: absolute;
+  top: 24px;
+  height: 9px;
+  background: var(--warm);
+  box-shadow: 0 0 0 1px var(--ink);
+}
+
+.clip-timeline-tick {
+  position: absolute;
+  top: 38px;
+  transform: translateX(-50%);
+  color: var(--muted);
+  font-size: 0.58rem;
+  white-space: nowrap;
+}
+
+.clip-timeline-handle {
+  position: absolute;
+  top: 11px;
+  width: 20px;
+  height: 36px;
+  padding: 0;
+  border: 2px solid var(--ink);
+  background: var(--paper);
+  cursor: ew-resize;
+  transform: translateX(-50%);
+  z-index: 1;
+}
+
+.clip-timeline-handle span {
   display: block;
-  width: 100%;
-  margin: 7px 0;
-  accent-color: var(--warm);
+  width: 4px;
+  height: 100%;
+  margin: 0 auto;
+  background: var(--ink);
+}
+
+.clip-timeline-handle.selected,
+.clip-timeline-handle:focus-visible {
+  border-color: var(--warm);
+  outline: 3px solid rgba(202, 96, 48, 0.28);
+  outline-offset: 2px;
+}
+
+.clip-timeline-help,
+.clip-control-hint {
+  margin: 10px 0 0;
+  color: var(--muted);
+  font-size: 0.72rem;
+  line-height: 1.45;
+}
+
+.clip-transcript {
+  width: min(100%, 420px);
+  margin: 24px auto 0;
+}
+
+.clip-transcript-cues {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-top: 12px;
+}
+
+.clip-transcript-cues span {
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  background: rgba(245, 244, 239, 0.72);
+  color: var(--muted);
+  font-size: 0.76rem;
+  line-height: 1.35;
+}
+
+.clip-transcript-cues span.active {
+  border-color: var(--warm);
+  color: var(--ink);
+  box-shadow: inset 3px 0 0 var(--warm);
+}
+
+.clip-transcript-cues small {
+  display: block;
+  margin-bottom: 3px;
+  color: var(--warm);
+  font-size: 0.62rem;
+  letter-spacing: 0.08em;
+}
+
+.clip-preview-progress {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+  width: min(100%, 420px);
+  margin: 22px auto 0;
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+.clip-progress-bar {
+  grid-column: 1 / -1;
+  height: 6px;
+  overflow: hidden;
+  background: var(--line);
+}
+
+.clip-progress-bar span {
+  display: block;
+  height: 100%;
+  background: var(--warm);
+  transition: width 180ms ease;
+}
+
+.clip-crop-controls output {
+  float: right;
+  color: var(--warm);
+  font-variant-numeric: tabular-nums;
 }
 
 .clip-controls {

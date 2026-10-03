@@ -32,6 +32,9 @@ export type UpdateClipInput = {
   readonly startSeconds: number;
   readonly endSeconds: number;
   readonly aspectRatio: AspectRatio;
+  readonly cropX: number;
+  readonly cropY: number;
+  readonly cropZoom: number;
   readonly captionPreset: CaptionPreset;
   readonly captionText: string;
   readonly fontFamily: string;
@@ -44,10 +47,10 @@ export type UpdateClipInput = {
   readonly animation: CaptionAnimation;
 };
 
-export async function updateClip(clipId: string, input: UpdateClipInput): Promise<Clip> {
+export async function updateClip(clipId: string, input: UpdateClipInput, expectedEditVersion: number): Promise<Clip> {
   return parseClip(await apiRequest<unknown>(`/api/clips/${clipId}`, {
     method: "PATCH",
-    body: JSON.stringify(input)
+    body: JSON.stringify({ ...input, expectedEditVersion })
   }));
 }
 
