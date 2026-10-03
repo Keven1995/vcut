@@ -7,6 +7,9 @@ public record UpdateClipRequest(
     BigDecimal startSeconds,
     BigDecimal endSeconds,
     String aspectRatio,
+    BigDecimal cropX,
+    BigDecimal cropY,
+    BigDecimal cropZoom,
     String captionPreset,
     @JsonAlias("text") String captionText,
     String fontFamily,
@@ -16,4 +19,5 @@ public record UpdateClipRequest(
     String backgroundColor,
     BigDecimal backgroundOpacity,
     String position,
-    String animation) {}
+    String animation,
+    Integer expectedEditVersion) {}

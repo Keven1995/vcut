@@ -69,6 +69,9 @@ public class ClipController {
                 request.startSeconds(),
                 request.endSeconds(),
                 request.aspectRatio(),
+                request.cropX(),
+                request.cropY(),
+                request.cropZoom(),
                 request.captionPreset(),
                 request.captionText(),
                 request.fontFamily(),
@@ -78,7 +81,8 @@ public class ClipController {
                 request.backgroundColor(),
                 request.backgroundOpacity(),
                 request.position(),
-                request.animation())));
+                request.animation()),
+            request.expectedEditVersion()));
   }
 
   @PostMapping("/clips/{clipId}/generate")

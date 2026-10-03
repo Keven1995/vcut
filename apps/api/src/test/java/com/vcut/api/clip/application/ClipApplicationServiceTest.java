@@ -20,6 +20,7 @@ import com.vcut.api.clip.domain.ClipCandidate;
 import com.vcut.api.clip.domain.ClipScore;
 import com.vcut.api.clip.domain.ClipStatus;
 import com.vcut.api.clip.domain.ClipVersion;
+import com.vcut.api.clip.domain.CropSettings;
 import com.vcut.api.job.application.OutboxRepository;
 import com.vcut.api.job.domain.OutboxMessage;
 import com.vcut.api.shared.messaging.MessageEnvelope;
@@ -142,6 +143,7 @@ class ClipApplicationServiceTest {
             BigDecimal.TEN,
             BigDecimal.valueOf(13),
             AspectRatio.PORTRAIT,
+            CropSettings.centered(),
             CaptionPreset.MINIMAL,
             CaptionPreset.MINIMAL.defaultStyle(),
             List.of(
@@ -156,7 +158,8 @@ class ClipApplicationServiceTest {
                     userId,
                     clip.id(),
                     new ClipEditCommand(
-                        null, null, null, null, null, null, 7, null, null, null, null, null, null)))
+                        null, null, null, null, null, null, null, null, null, 7, null, null, null,
+                        null, null, null)))
         .isInstanceOf(com.vcut.api.shared.errors.ValidationException.class);
     verify(clipRepository).findByIdForUser(clip.id(), userId);
     org.mockito.Mockito.verify(clipRepository, org.mockito.Mockito.never()).saveVersion(any());
@@ -181,6 +184,7 @@ class ClipApplicationServiceTest {
             BigDecimal.TEN,
             BigDecimal.valueOf(13),
             AspectRatio.PORTRAIT,
+            CropSettings.centered(),
             CaptionPreset.MINIMAL,
             CaptionPreset.MINIMAL.defaultStyle(),
             List.of(
@@ -220,6 +224,7 @@ class ClipApplicationServiceTest {
             BigDecimal.TEN,
             BigDecimal.valueOf(13),
             AspectRatio.PORTRAIT,
+            CropSettings.centered(),
             CaptionPreset.MINIMAL,
             CaptionPreset.MINIMAL.defaultStyle(),
             List.of(),
@@ -266,6 +271,7 @@ class ClipApplicationServiceTest {
             BigDecimal.TEN,
             BigDecimal.valueOf(13),
             AspectRatio.PORTRAIT,
+            CropSettings.centered(),
             CaptionPreset.MINIMAL,
             CaptionPreset.MINIMAL.defaultStyle(),
             List.of(),
@@ -310,6 +316,7 @@ class ClipApplicationServiceTest {
             BigDecimal.TEN,
             BigDecimal.valueOf(13),
             AspectRatio.PORTRAIT,
+            CropSettings.centered(),
             CaptionPreset.MINIMAL,
             CaptionPreset.MINIMAL.defaultStyle(),
             List.of(),

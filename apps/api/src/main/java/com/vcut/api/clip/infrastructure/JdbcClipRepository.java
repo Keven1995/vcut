@@ -13,6 +13,7 @@ import com.vcut.api.clip.domain.Clip;
 import com.vcut.api.clip.domain.ClipScore;
 import com.vcut.api.clip.domain.ClipStatus;
 import com.vcut.api.clip.domain.ClipVersion;
+import com.vcut.api.clip.domain.CropSettings;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
@@ -30,14 +31,14 @@ public class JdbcClipRepository implements ClipRepository {
       "c.id AS clip_id, c.user_id AS clip_user_id, c.project_id AS clip_project_id, "
           + "c.video_id AS clip_video_id, c.candidate_id AS clip_candidate_id, "
           + "c.hook_score, c.context_score, c.development_score, c.payoff_score, "
-          + "c.independence_score, c.engagement_score, c.current_edit_version, c.status, "
+          + "c.independence_score, c.engagement_score, c.current_edit_version, c.status, c.generation_progress, "
           + "c.output_object_key, c.output_width, c.output_height, c.output_duration_seconds, "
           + "c.output_aspect_ratio, c.output_edit_version, c.error_code, c.error_message, "
           + "c.created_at AS clip_created_at, c.updated_at AS clip_updated_at, "
           + "v.id AS version_id, v.clip_id AS version_clip_id, v.user_id AS version_user_id, "
           + "v.project_id AS version_project_id, v.video_id AS version_video_id, "
           + "v.candidate_id AS version_candidate_id, v.edit_version, v.start_seconds, v.end_seconds, "
-          + "v.aspect_ratio, v.caption_preset, v.font_family, v.font_size, v.font_weight, "
+          + "v.aspect_ratio, v.crop_x, v.crop_y, v.crop_zoom, v.caption_preset, v.font_family, v.font_size, v.font_weight, "
           + "v.text_color, v.background_color, v.background_opacity, v.caption_position, "
           + "v.caption_animation, v.created_at AS version_created_at";
 
@@ -52,7 +53,7 @@ public class JdbcClipRepository implements ClipRepository {
     jdbcTemplate.update(
         "INSERT INTO clips (id, user_id, project_id, video_id, candidate_id, hook_score, context_score, "
             + "development_score, payoff_score, independence_score, engagement_score, current_edit_version, "
-            + "status, output_object_key, output_width, output_height, output_duration_seconds, "
+            + "status, generation_progress, output_object_key, output_width, output_height, output_duration_seconds, "
             + "output_aspect_ratio, output_edit_version, error_code, error_message, created_at, updated_at) "
             + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         clip.id(),
@@ -68,6 +69,7 @@ public class JdbcClipRepository implements ClipRepository {
         clip.score().engagement(),
         clip.currentEditVersion(),
         clip.status().name(),
+        clip.generationProgress(),
         clip.outputObjectKey(),
         clip.outputWidth(),
         clip.outputHeight(),
@@ -85,9 +87,9 @@ public class JdbcClipRepository implements ClipRepository {
   public ClipVersion saveVersion(ClipVersion version) {
     jdbcTemplate.update(
         "INSERT INTO clip_versions (id, clip_id, user_id, project_id, video_id, candidate_id, edit_version, "
-            + "start_seconds, end_seconds, aspect_ratio, caption_preset, font_family, font_size, font_weight, "
+            + "start_seconds, end_seconds, aspect_ratio, crop_x, crop_y, crop_zoom, caption_preset, font_family, font_size, font_weight, "
             + "text_color, background_color, background_opacity, caption_position, caption_animation, created_at) "
-            + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         version.id(),
         version.clipId(),
         version.userId(),
@@ -98,6 +100,9 @@ public class JdbcClipRepository implements ClipRepository {
         version.startSeconds(),
         version.endSeconds(),
         version.aspectRatio().value(),
+        version.crop().x(),
+        version.crop().y(),
+        version.crop().zoom(),
         version.captionPreset().name(),
         version.captionStyle().fontFamily(),
         version.captionStyle().fontSize(),
@@ -127,12 +132,13 @@ public class JdbcClipRepository implements ClipRepository {
   public void update(Clip clip) {
     jdbcTemplate.update(
         "UPDATE clips SET generation_requested_version = CASE WHEN current_edit_version <> ? "
-            + "THEN NULL ELSE generation_requested_version END, current_edit_version = ?, status = ?, output_object_key = ?, output_width = ?, "
+            + "THEN NULL ELSE generation_requested_version END, current_edit_version = ?, status = ?, generation_progress = ?, output_object_key = ?, output_width = ?, "
             + "output_height = ?, output_duration_seconds = ?, output_aspect_ratio = ?, output_edit_version = ?, "
             + "error_code = ?, error_message = ?, updated_at = ? WHERE id = ? AND user_id = ?",
         clip.currentEditVersion(),
         clip.currentEditVersion(),
         clip.status().name(),
+        clip.generationProgress(),
         clip.outputObjectKey(),
         clip.outputWidth(),
         clip.outputHeight(),
@@ -150,7 +156,7 @@ public class JdbcClipRepository implements ClipRepository {
   public boolean claimGeneration(UUID clipId, UUID userId, int editVersion, Instant now) {
     int updated =
         jdbcTemplate.update(
-            "UPDATE clips SET generation_requested_version = current_edit_version, status = 'QUEUED', "
+            "UPDATE clips SET generation_requested_version = current_edit_version, status = 'QUEUED', generation_progress = 0, "
                 + "output_object_key = NULL, output_width = NULL, output_height = NULL, "
                 + "output_duration_seconds = NULL, output_aspect_ratio = NULL, output_edit_version = NULL, "
                 + "error_code = NULL, error_message = NULL, updated_at = ? "
@@ -252,6 +258,7 @@ public class JdbcClipRepository implements ClipRepository {
             resultSet.getBigDecimal("engagement_score")),
         resultSet.getInt("current_edit_version"),
         ClipStatus.valueOf(resultSet.getString("status")),
+        resultSet.getInt("generation_progress"),
         resultSet.getString("output_object_key"),
         nullableInteger(resultSet, "output_width"),
         nullableInteger(resultSet, "output_height"),
@@ -277,6 +284,10 @@ public class JdbcClipRepository implements ClipRepository {
         resultSet.getBigDecimal("start_seconds"),
         resultSet.getBigDecimal("end_seconds"),
         AspectRatio.fromValue(resultSet.getString("aspect_ratio")),
+        new CropSettings(
+            resultSet.getBigDecimal("crop_x"),
+            resultSet.getBigDecimal("crop_y"),
+            resultSet.getBigDecimal("crop_zoom")),
         CaptionPreset.valueOf(resultSet.getString("caption_preset")),
         new CaptionStyle(
             resultSet.getString("font_family"),

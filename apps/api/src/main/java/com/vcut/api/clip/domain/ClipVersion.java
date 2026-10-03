@@ -17,6 +17,7 @@ public record ClipVersion(
     BigDecimal startSeconds,
     BigDecimal endSeconds,
     AspectRatio aspectRatio,
+    CropSettings crop,
     CaptionPreset captionPreset,
     CaptionStyle captionStyle,
     List<CaptionCue> captionCues,
@@ -41,6 +42,7 @@ public record ClipVersion(
       throw new IllegalArgumentException("clip interval must be positive and at most 90 seconds");
     }
     Objects.requireNonNull(aspectRatio, "aspectRatio");
+    Objects.requireNonNull(crop, "crop");
     Objects.requireNonNull(captionPreset, "captionPreset");
     Objects.requireNonNull(captionStyle, "captionStyle");
     captionCues = List.copyOf(Objects.requireNonNull(captionCues, "captionCues"));
@@ -61,6 +63,7 @@ public record ClipVersion(
       BigDecimal startSeconds,
       BigDecimal endSeconds,
       AspectRatio aspectRatio,
+      CropSettings crop,
       CaptionPreset captionPreset,
       CaptionStyle captionStyle,
       List<CaptionCue> captionCues,
@@ -76,6 +79,7 @@ public record ClipVersion(
         startSeconds,
         endSeconds,
         aspectRatio,
+        crop,
         captionPreset,
         captionStyle,
         captionCues,
@@ -87,6 +91,7 @@ public record ClipVersion(
       BigDecimal newStart,
       BigDecimal newEnd,
       AspectRatio newAspectRatio,
+      CropSettings newCrop,
       CaptionPreset newCaptionPreset,
       CaptionStyle newCaptionStyle,
       List<CaptionCue> newCues,
@@ -102,6 +107,7 @@ public record ClipVersion(
         newStart,
         newEnd,
         newAspectRatio,
+        newCrop,
         newCaptionPreset,
         newCaptionStyle,
         newCues,

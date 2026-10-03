@@ -13,6 +13,7 @@ import com.vcut.api.clip.domain.ClipCandidate;
 import com.vcut.api.clip.domain.ClipScore;
 import com.vcut.api.clip.domain.ClipStatus;
 import com.vcut.api.clip.domain.ClipVersion;
+import com.vcut.api.clip.domain.CropSettings;
 import com.vcut.api.job.application.OutboxRepository;
 import com.vcut.api.job.domain.OutboxMessage;
 import com.vcut.api.shared.correlation.CorrelationContext;
@@ -147,6 +148,7 @@ public class ClipApplicationService {
             candidate.startSeconds(),
             candidate.endSeconds(),
             aspectRatio,
+            CropSettings.centered(),
             captionPreset,
             captionPreset.defaultStyle(),
             cuesFor(transcription, candidate.startSeconds(), candidate.endSeconds()),
@@ -174,7 +176,17 @@ public class ClipApplicationService {
 
   @Transactional
   public ClipAggregate update(UUID userId, UUID clipId, ClipEditCommand command) {
+    return update(userId, clipId, command, null);
+  }
+
+  @Transactional
+  public ClipAggregate update(
+      UUID userId, UUID clipId, ClipEditCommand command, Integer expectedEditVersion) {
     ClipAggregate aggregate = get(userId, clipId);
+    if (expectedEditVersion != null && expectedEditVersion != aggregate.version().editVersion()) {
+      throw new ConflictException(
+          "Clip was changed by another editor. Refresh before saving this version.");
+    }
     Video video = ownedReadyVideo(userId, aggregate.clip().videoId());
     ClipVersion current = aggregate.version();
     BigDecimal start =
@@ -191,6 +203,7 @@ public class ClipApplicationService {
             ? current.captionPreset()
             : parseCaptionPreset(command.captionPreset());
     CaptionStyle style = validatedStyle(current, command, captionPreset);
+    CropSettings crop = validatedCrop(current, command);
     boolean intervalChanged =
         start.compareTo(current.startSeconds()) != 0 || end.compareTo(current.endSeconds()) != 0;
     List<CaptionCue> cues =
@@ -201,7 +214,8 @@ public class ClipApplicationService {
                 : current.captionCues();
     Instant now = clock.instant();
     ClipVersion next =
-        current.next(UUID.randomUUID(), start, end, aspectRatio, captionPreset, style, cues, now);
+        current.next(
+            UUID.randomUUID(), start, end, aspectRatio, crop, captionPreset, style, cues, now);
     Clip edited = aggregate.clip().edited(next.editVersion(), now);
     clipRepository.saveVersion(next);
     clipRepository.update(edited);
@@ -285,7 +299,7 @@ public class ClipApplicationService {
     Clip next =
         switch (status) {
           case QUEUED -> aggregate.clip().queued(now);
-          case PROCESSING -> aggregate.clip().processing(now);
+          case PROCESSING -> aggregate.clip().processing(progress(update.data()), now);
           case FAILED ->
               aggregate
                   .clip()
@@ -389,6 +403,7 @@ public class ClipApplicationService {
     data.put("startSeconds", version.startSeconds());
     data.put("endSeconds", version.endSeconds());
     data.put("aspectRatio", version.aspectRatio().value());
+    data.put("cropSettings", cropData(version.crop()));
     data.put("captionPreset", version.captionPreset().name());
     data.put("captionStyle", styleData(version.captionStyle()));
     data.put("captionCues", cueData(version.captionCues()));
@@ -426,6 +441,14 @@ public class ClipApplicationService {
     data.put("backgroundOpacity", style.backgroundOpacity());
     data.put("position", style.position().name());
     data.put("animation", style.animation().name());
+    return data;
+  }
+
+  private static Map<String, Object> cropData(CropSettings crop) {
+    Map<String, Object> data = new LinkedHashMap<>();
+    data.put("x", crop.x());
+    data.put("y", crop.y());
+    data.put("zoom", crop.zoom());
     return data;
   }
 
@@ -554,6 +577,20 @@ public class ClipApplicationService {
     }
   }
 
+  private static CropSettings validatedCrop(ClipVersion current, ClipEditCommand command) {
+    if (command.cropX() == null && command.cropY() == null && command.cropZoom() == null) {
+      return current.crop();
+    }
+    try {
+      return new CropSettings(
+          command.cropX() == null ? current.crop().x() : command.cropX(),
+          command.cropY() == null ? current.crop().y() : command.cropY(),
+          command.cropZoom() == null ? current.crop().zoom() : command.cropZoom());
+    } catch (IllegalArgumentException exception) {
+      throw new ValidationException(exception.getMessage());
+    }
+  }
+
   private static List<CaptionCue> manualCue(String text, BigDecimal duration) {
     try {
       return List.of(new CaptionCue(UUID.randomUUID(), text, BigDecimal.ZERO, duration));
@@ -610,6 +647,17 @@ public class ClipApplicationService {
       case "COMPLETED" -> null;
       default -> throw new ValidationException("Unsupported clip worker status: " + value);
     };
+  }
+
+  private static int progress(Map<String, Object> data) {
+    Object value = data.get("progress");
+    if (!(value instanceof Number number)
+        || number.intValue() < 0
+        || number.intValue() > 100
+        || number.doubleValue() != number.intValue()) {
+      throw new ValidationException("Worker progress must be an integer between 0 and 100");
+    }
+    return number.intValue();
   }
 
   private static void validatePage(int page, int size) {

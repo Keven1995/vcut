@@ -14,6 +14,7 @@ public record Clip(
     ClipScore score,
     int currentEditVersion,
     ClipStatus status,
+    int generationProgress,
     String outputObjectKey,
     Integer outputWidth,
     Integer outputHeight,
@@ -36,6 +37,9 @@ public record Clip(
       throw new IllegalArgumentException("currentEditVersion must be positive");
     }
     Objects.requireNonNull(status, "status");
+    if (generationProgress < 0 || generationProgress > 100) {
+      throw new IllegalArgumentException("generationProgress must be between 0 and 100");
+    }
     if (outputObjectKey != null && outputObjectKey.isBlank()) {
       throw new IllegalArgumentException("outputObjectKey must not be blank");
     }
@@ -78,6 +82,7 @@ public record Clip(
         score,
         1,
         ClipStatus.QUEUED,
+        0,
         null,
         null,
         null,
@@ -103,6 +108,7 @@ public record Clip(
         score,
         editVersion,
         ClipStatus.QUEUED,
+        0,
         null,
         null,
         null,
@@ -116,12 +122,17 @@ public record Clip(
   }
 
   public Clip processing(Instant now) {
+    return processing(0, now);
+  }
+
+  public Clip processing(int progress, Instant now) {
     if (status == ClipStatus.READY
         && outputEditVersion != null
         && outputEditVersion == currentEditVersion) {
       return this;
     }
-    return withState(ClipStatus.PROCESSING, null, null, null, null, null, null, null, now);
+    return withState(
+        ClipStatus.PROCESSING, progress, null, null, null, null, null, null, null, now);
   }
 
   public Clip ready(
@@ -150,6 +161,7 @@ public record Clip(
     }
     return withState(
         ClipStatus.READY,
+        100,
         outputKey,
         width,
         height,
@@ -168,7 +180,17 @@ public record Clip(
     if (code == null || code.isBlank() || message == null || message.isBlank()) {
       throw new IllegalArgumentException("generation failure must contain code and message");
     }
-    return withState(ClipStatus.FAILED, null, null, null, null, null, editVersion, code, now)
+    return withState(
+            ClipStatus.FAILED,
+            generationProgress,
+            null,
+            null,
+            null,
+            null,
+            null,
+            editVersion,
+            code,
+            now)
         .withErrorMessage(message);
   }
 
@@ -178,11 +200,12 @@ public record Clip(
         && outputEditVersion == currentEditVersion) {
       return this;
     }
-    return withState(ClipStatus.QUEUED, null, null, null, null, null, null, null, now);
+    return withState(ClipStatus.QUEUED, 0, null, null, null, null, null, null, null, now);
   }
 
   private Clip withState(
       ClipStatus newStatus,
+      int progress,
       String outputKey,
       Integer width,
       Integer height,
@@ -200,6 +223,7 @@ public record Clip(
         score,
         currentEditVersion,
         newStatus,
+        progress,
         outputKey,
         width,
         height,
@@ -222,6 +246,7 @@ public record Clip(
         score,
         currentEditVersion,
         status,
+        generationProgress,
         outputObjectKey,
         outputWidth,
         outputHeight,
