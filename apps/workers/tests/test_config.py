@@ -29,6 +29,17 @@ def test_settings_are_loaded_from_environment(monkeypatch: MonkeyPatch) -> None:
     assert settings.postgres_password == "worker-secret"
 
 
+def test_clip_generation_defaults_match_api_messaging_contract() -> None:
+    settings = WorkerSettings()
+
+    assert settings.rabbitmq_clip_generation_queue == "vcut.pipeline.commands.clip-generation"
+    assert settings.rabbitmq_clip_generation_result_routing_key == (
+        "pipeline.video.clip-generation.completed"
+    )
+    assert (settings.clip_vertical_width, settings.clip_vertical_height) == (1080, 1920)
+    assert (settings.clip_horizontal_width, settings.clip_horizontal_height) == (1920, 1080)
+
+
 def test_live_endpoint_does_not_require_dependencies() -> None:
     response = TestClient(worker_app.app).get("/health/live")
 

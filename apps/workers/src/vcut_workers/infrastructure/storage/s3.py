@@ -23,6 +23,8 @@ class S3Client(Protocol):
         ExtraArgs: dict[str, str],
     ) -> None: ...
 
+    def delete_object(self, *, Bucket: str, Key: str) -> dict[str, object]: ...
+
 
 class S3ObjectStorage:
     def __init__(self, settings: WorkerSettings) -> None:
@@ -76,6 +78,9 @@ class S3ObjectStorage:
         if metadata is None:
             raise RuntimeError("uploaded object was not available after upload")
         return metadata
+
+    def delete(self, object_key: str) -> None:
+        self._client.delete_object(Bucket=self._bucket, Key=object_key)
 
 
 def _is_not_found(exception: ClientError) -> bool:

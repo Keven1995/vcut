@@ -38,6 +38,7 @@ class VideoMetadata:
     has_audio: bool
     video_codec: str
     audio_codec: str | None
+    sample_aspect_ratio: str = "1:1"
 
     def __post_init__(self) -> None:
         if not self.container or not self.video_codec:
@@ -48,6 +49,8 @@ class VideoMetadata:
             raise ValueError("video dimensions must be positive")
         if self.frame_rate is not None and self.frame_rate < 0:
             raise ValueError("frame_rate must not be negative")
+        if not self.sample_aspect_ratio:
+            raise ValueError("sample_aspect_ratio must not be empty")
 
 
 @dataclass(frozen=True)

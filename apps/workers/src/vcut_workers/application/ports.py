@@ -4,6 +4,7 @@ from uuid import UUID
 
 from vcut_workers.contracts.clip_analysis import AnalyzeClipsCommand
 from vcut_workers.domain.clip_analysis import AnalysisProviderResponse, SemanticSegment
+from vcut_workers.domain.clip_generation import ClipComposition
 from vcut_workers.domain.media import (
     AudioMetadata,
     ObjectMetadata,
@@ -25,6 +26,14 @@ class VideoProcessor(Protocol):
 
 
 class MediaProcessor(VideoProcessor, Protocol):
+    def compose(
+        self,
+        source: Path,
+        destination: Path,
+        composition: ClipComposition,
+    ) -> VideoMetadata:
+        """Compose a validated interval, aspect ratio and caption track."""
+
     def normalize(
         self,
         source: Path,
@@ -86,6 +95,9 @@ class ObjectStorage(Protocol):
 class WritableObjectStorage(ObjectStorage, Protocol):
     def upload(self, source: Path, object_key: str, content_type: str) -> ObjectMetadata:
         """Upload a local artifact and return its stored metadata."""
+
+    def delete(self, object_key: str) -> None:
+        """Delete an object when a processing attempt cannot produce a valid result."""
 
 
 class VisionAnalyzer(Protocol):

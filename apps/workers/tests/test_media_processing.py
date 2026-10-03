@@ -12,6 +12,7 @@ from vcut_workers.application.media_processing import (
     NormalizeVideoUseCase,
     PrepareMediaPipeline,
 )
+from vcut_workers.domain.clip_generation import ClipComposition
 from vcut_workers.domain.media import AudioMetadata, VideoMetadata
 from vcut_workers.infrastructure.storage.memory import InMemoryObjectStorage
 
@@ -39,6 +40,13 @@ class FakeMediaProcessor:
         self.temporary_paths: list[Path] = []
 
     def probe(self, source: Path) -> VideoMetadata:
+        return self.video
+
+    def compose(
+        self, source: Path, destination: Path, composition: ClipComposition
+    ) -> VideoMetadata:
+        del source, composition
+        destination.write_bytes(b"composed-video")
         return self.video
 
     def cut(

@@ -1,10 +1,17 @@
 import json
 import subprocess
 from dataclasses import dataclass
+from math import isfinite
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from typing import cast
 
 from vcut_workers.application.errors import MediaProcessingError, MediaProcessingLimitError
+from vcut_workers.domain.clip_generation import (
+    CaptionAnimation,
+    CaptionPosition,
+    ClipComposition,
+)
 from vcut_workers.domain.media import AudioMetadata, VideoMetadata
 
 
@@ -139,6 +146,60 @@ class FFmpegVideoProcessor:
             output_paths=(destination,),
         )
 
+    def compose(
+        self,
+        source: Path,
+        destination: Path,
+        composition: ClipComposition,
+    ) -> VideoMetadata:
+        """Render a validated clip using only filters assembled by this adapter."""
+
+        if not source.is_file():
+            raise MediaProcessingError("SOURCE_FILE_NOT_FOUND", "source media was not downloaded")
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        duration = _format_seconds(composition.duration_seconds)
+        with TemporaryDirectory(prefix="vcut-caption-", dir=str(destination.parent)) as directory:
+            video_filter = _composition_filter(composition, Path(directory))
+            command = [
+                self._binary,
+                "-max_alloc",
+                str(self._limits.max_memory_bytes),
+                "-y",
+                "-i",
+                str(source),
+                "-ss",
+                _format_seconds(composition.start_seconds),
+                "-t",
+                duration,
+                "-filter_complex",
+                video_filter,
+                "-map",
+                "[vout]",
+                "-map",
+                "0:a:0?",
+                "-c:v",
+                "libx264",
+                "-pix_fmt",
+                "yuv420p",
+                "-c:a",
+                "aac",
+                "-b:a",
+                "128k",
+                "-af",
+                f"atrim=duration={duration},asetpts=PTS-STARTPTS",
+                "-t",
+                duration,
+                "-avoid_negative_ts",
+                "make_zero",
+                "-movflags",
+                "+faststart",
+                "-map_metadata",
+                "-1",
+                str(destination),
+            ]
+            self._run(command, output_paths=(destination,))
+        return self.probe(destination)
+
     def thumbnail(
         self,
         source: Path,
@@ -197,7 +258,8 @@ class FFmpegVideoProcessor:
     def probe(self, source: Path) -> VideoMetadata:
         payload = self._probe(
             source,
-            "format=format_name,duration:stream=codec_type,codec_name,width,height,avg_frame_rate",
+            "format=format_name,duration:stream=codec_type,codec_name,width,height,"
+            "avg_frame_rate,sample_aspect_ratio",
         )
         streams = _objects(payload.get("streams"))
         video_stream = next(
@@ -223,6 +285,7 @@ class FFmpegVideoProcessor:
                 ),
                 None,
             ),
+            sample_aspect_ratio=str(video_stream.get("sample_aspect_ratio", "1:1")),
         )
 
     def probe_audio(self, source: Path) -> AudioMetadata:
@@ -313,6 +376,98 @@ class FFmpegVideoProcessor:
             if not succeeded:
                 for path in output_paths:
                     path.unlink(missing_ok=True)
+
+
+def _composition_filter(composition: ClipComposition, sidecar_directory: Path) -> str:
+    scale_and_crop = (
+        f"[0:v:0]scale={composition.width}:{composition.height}:"
+        f"force_original_aspect_ratio=increase,crop={composition.width}:{composition.height}:"
+        "(in_w-out_w)/2:(in_h-out_h)/2,setsar=1"
+    )
+    filters = [scale_and_crop]
+    style = composition.caption_style
+    font_file = _caption_font_file(style.font, style.font_weight)
+    for index, cue in enumerate(composition.caption_track.cues):
+        sidecar = sidecar_directory / f"cue-{index:04d}.txt"
+        sidecar.write_text(cue.text, encoding="utf-8")
+        color = (
+            style.highlight_color
+            if style.animation is CaptionAnimation.KARAOKE
+            else style.color
+        )
+        if style.position is CaptionPosition.TOP:
+            y = "h*0.12"
+        elif style.position is CaptionPosition.CENTER:
+            y = "(h-text_h)/2"
+        else:
+            y = "h-text_h-h*0.12"
+        border_width = 2 if style.font_weight >= 700 else 0
+        filters.append(
+            "drawtext="
+            f"fontfile='{_escape_filter_value(font_file.as_posix())}':"
+            f"textfile='{_escape_filter_value(sidecar.as_posix())}':"
+            f"fontcolor=0x{color[1:]}:fontsize={style.font_size}:"
+            f"borderw={border_width}:bordercolor=0x000000@0.65:"
+            f"box=1:boxcolor=0x{style.background_color[1:]}@{style.background_opacity:.3f}:boxborderw=12:"
+            f"x=(w-text_w)/2:y={y}:"
+            r"enable='between(t\,"
+            rf"{_format_seconds(cue.start_seconds)}\,{_format_seconds(cue.end_seconds)})'"
+        )
+    filters[-1] += "[vout]"
+    return ",".join(filters)
+
+
+def _escape_filter_value(value: str) -> str:
+    return value.replace("\\", "\\\\").replace(":", "\\:").replace("'", "\\'")
+
+
+def _caption_font_file(font: str, font_weight: int) -> Path:
+    """Resolve only known bundled/system fonts; never treat the font as a path."""
+
+    bold = font_weight >= 700
+    candidates: tuple[Path, ...]
+    if font.lower() == "dejavu sans":
+        candidates = (
+            Path("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf")
+            if bold
+            else Path("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"),
+            Path("C:/Windows/Fonts/arialbd.ttf")
+            if bold
+            else Path("C:/Windows/Fonts/arial.ttf"),
+            Path("C:/Windows/Fonts/segoeuib.ttf")
+            if bold
+            else Path("C:/Windows/Fonts/segoeui.ttf"),
+        )
+    elif font.lower() == "arial":
+        candidates = (
+            Path("C:/Windows/Fonts/arialbd.ttf")
+            if bold
+            else Path("C:/Windows/Fonts/arial.ttf"),
+            Path("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf")
+            if bold
+            else Path("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"),
+        )
+    else:
+        candidates = (
+            Path("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf")
+            if bold
+            else Path("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"),
+            Path("C:/Windows/Fonts/arialbd.ttf")
+            if bold
+            else Path("C:/Windows/Fonts/arial.ttf"),
+        )
+    for candidate in candidates:
+        if candidate.is_file():
+            return candidate
+    raise MediaProcessingError(
+        "CAPTION_FONT_UNAVAILABLE", "no safe caption font is available in the worker image"
+    )
+
+
+def _format_seconds(value: float) -> str:
+    if not isfinite(value) or value < 0:
+        raise ValueError("seconds must be finite and non-negative")
+    return f"{value:.9f}"
 
 
 def _parse_frame_rate(value: object) -> float | None:

@@ -39,6 +39,9 @@ class PermanentProcessingError(ProcessingError):
 def classify_error(error: Exception) -> ProcessingErrorInfo:
     if isinstance(error, ProcessingError):
         return ProcessingErrorInfo(error.classification, error.code, _message(error))
+    error_code = getattr(error, "code", None)
+    if isinstance(error_code, str) and error_code:
+        return ProcessingErrorInfo(ErrorClassification.PERMANENT, error_code, _message(error))
     if isinstance(error, TimeoutError):
         return ProcessingErrorInfo(
             ErrorClassification.TRANSIENT,

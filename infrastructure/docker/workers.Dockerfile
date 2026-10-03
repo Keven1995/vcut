@@ -8,7 +8,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 WORKDIR /app
 
 RUN apt-get update \
-    && apt-get install --no-install-recommends --yes python3.12 python3.12-venv \
+    && apt-get install --no-install-recommends --yes python3.12 python3.12-venv fonts-dejavu-core \
     && python3.12 -m venv /opt/venv \
     && rm -rf /var/lib/apt/lists/*
 

@@ -39,3 +39,7 @@ class InMemoryObjectStorage:
         if metadata is None:
             raise RuntimeError("uploaded object was not available after upload")
         return metadata
+
+    def delete(self, object_key: str) -> None:
+        self._objects.pop(object_key, None)
+        self._content_types.pop(object_key, None)

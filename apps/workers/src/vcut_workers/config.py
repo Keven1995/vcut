@@ -33,6 +33,9 @@ class WorkerSettings(BaseModel):
     rabbitmq_clip_analysis_queue: str = Field(
         default="vcut.pipeline.commands.clip-analysis", min_length=1
     )
+    rabbitmq_clip_generation_queue: str = Field(
+        default="vcut.pipeline.commands.clip-generation", min_length=1
+    )
     rabbitmq_command_exchange: str = Field(default="vcut.pipeline.commands", min_length=1)
     rabbitmq_retry_exchange: str = Field(default="vcut.pipeline.retry", min_length=1)
     rabbitmq_dead_letter_exchange: str = Field(default="vcut.pipeline.dlx", min_length=1)
@@ -45,6 +48,9 @@ class WorkerSettings(BaseModel):
     )
     rabbitmq_clip_analysis_result_routing_key: str = Field(
         default="pipeline.video.clip-analysis.completed", min_length=1
+    )
+    rabbitmq_clip_generation_result_routing_key: str = Field(
+        default="pipeline.video.clip-generation.completed", min_length=1
     )
     rabbitmq_enabled: bool = True
     storage_endpoint: str = Field(default="http://localhost:9000", min_length=1)
@@ -61,6 +67,15 @@ class WorkerSettings(BaseModel):
     whisper_beam_size: int = Field(default=5, ge=1)
     transcription_language: str | None = None
     content_analysis_provider: Literal["deterministic", "fallback"] = "deterministic"
+    clip_generation_enabled: bool = True
+    clip_max_input_size_bytes: int = Field(default=536_870_912, gt=0)
+    clip_max_duration_seconds: float = Field(default=90, gt=0)
+    clip_duration_tolerance_seconds: float = Field(default=0.1, ge=0)
+    clip_max_caption_cues: int = Field(default=500, ge=0)
+    clip_vertical_width: int = Field(default=1080, gt=0)
+    clip_vertical_height: int = Field(default=1920, gt=0)
+    clip_horizontal_width: int = Field(default=1920, gt=0)
+    clip_horizontal_height: int = Field(default=1080, gt=0)
 
     @classmethod
     def from_environment(cls) -> "WorkerSettings":
@@ -88,6 +103,9 @@ class WorkerSettings(BaseModel):
             rabbitmq_clip_analysis_queue=os.getenv(
                 "RABBITMQ_CLIP_ANALYSIS_QUEUE", "vcut.pipeline.commands.clip-analysis"
             ),
+            rabbitmq_clip_generation_queue=os.getenv(
+                "RABBITMQ_CLIP_GENERATION_QUEUE", "vcut.pipeline.commands.clip-generation"
+            ),
             rabbitmq_transcription_result_routing_key=os.getenv(
                 "RABBITMQ_TRANSCRIPTION_RESULT_ROUTING_KEY",
                 "pipeline.video.transcription.completed",
@@ -95,6 +113,10 @@ class WorkerSettings(BaseModel):
             rabbitmq_clip_analysis_result_routing_key=os.getenv(
                 "RABBITMQ_CLIP_ANALYSIS_RESULT_ROUTING_KEY",
                 "pipeline.video.clip-analysis.completed",
+            ),
+            rabbitmq_clip_generation_result_routing_key=os.getenv(
+                "RABBITMQ_CLIP_GENERATION_RESULT_ROUTING_KEY",
+                "pipeline.video.clip-generation.completed",
             ),
             rabbitmq_enabled=os.getenv("RABBITMQ_ENABLED", "true").lower() == "true",
             storage_endpoint=os.getenv("OBJECT_STORAGE_ENDPOINT", "http://localhost:9000"),
@@ -119,4 +141,17 @@ class WorkerSettings(BaseModel):
                 Literal["deterministic", "fallback"],
                 os.getenv("CONTENT_ANALYSIS_PROVIDER", "deterministic"),
             ),
+            clip_generation_enabled=os.getenv("CLIP_GENERATION_ENABLED", "true").lower() == "true",
+            clip_max_input_size_bytes=int(
+                os.getenv("CLIP_MAX_INPUT_SIZE_BYTES", "536870912")
+            ),
+            clip_max_duration_seconds=float(os.getenv("CLIP_MAX_DURATION_SECONDS", "90")),
+            clip_duration_tolerance_seconds=float(
+                os.getenv("CLIP_DURATION_TOLERANCE_SECONDS", "0.1")
+            ),
+            clip_max_caption_cues=int(os.getenv("CLIP_MAX_CAPTION_CUES", "500")),
+            clip_vertical_width=int(os.getenv("CLIP_VERTICAL_WIDTH", "1080")),
+            clip_vertical_height=int(os.getenv("CLIP_VERTICAL_HEIGHT", "1920")),
+            clip_horizontal_width=int(os.getenv("CLIP_HORIZONTAL_WIDTH", "1920")),
+            clip_horizontal_height=int(os.getenv("CLIP_HORIZONTAL_HEIGHT", "1080")),
         )

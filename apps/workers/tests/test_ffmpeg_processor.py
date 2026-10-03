@@ -5,6 +5,14 @@ from pathlib import Path
 import pytest
 
 from vcut_workers.application.errors import MediaProcessingLimitError
+from vcut_workers.domain.clip_generation import (
+    AspectRatio,
+    CaptionCue,
+    CaptionPreset,
+    CaptionTrack,
+    ClipComposition,
+    caption_style_for_preset,
+)
 from vcut_workers.infrastructure.ffmpeg.processor import (
     FFmpegExecutionLimits,
     FFmpegVideoProcessor,
@@ -132,3 +140,46 @@ def test_processor_reports_memory_limit(tmp_path: Path) -> None:
         processor.normalize(source, normalized, target_fps=30)
 
     assert not normalized.exists()
+
+
+@pytest.mark.parametrize(
+    ("aspect_ratio", "width", "height"),
+    [(AspectRatio.VERTICAL, 180, 320), (AspectRatio.HORIZONTAL, 320, 180)],
+)
+def test_processor_composes_both_aspects_with_unicode_captions(
+    tmp_path: Path, aspect_ratio: AspectRatio, width: int, height: int
+) -> None:
+    source = tmp_path / "source.mp4"
+    destination = tmp_path / f"clip-{width}x{height}.mp4"
+    make_fixture_video(source)
+    duration = 1.0
+    composition = ClipComposition(
+        start_seconds=0.25,
+        end_seconds=1.25,
+        aspect_ratio=aspect_ratio,
+        caption_track=CaptionTrack(
+            duration_seconds=duration,
+            cues=(
+                CaptionCue(
+                    sequence=0,
+                    text="Olá, ação e música: Привет! 你好!",
+                    start_seconds=0.1,
+                    end_seconds=0.9,
+                ),
+            ),
+        ),
+        caption_style=caption_style_for_preset(CaptionPreset.KARAOKE),
+        width=width,
+        height=height,
+    )
+    processor = FFmpegVideoProcessor(
+        execution_limits=FFmpegExecutionLimits(timeout_seconds=60, max_temp_bytes=50_000_000)
+    )
+
+    metadata = processor.compose(source, destination, composition)
+
+    assert metadata.width == width
+    assert metadata.height == height
+    assert metadata.sample_aspect_ratio == "1:1"
+    assert metadata.duration_seconds == pytest.approx(duration, abs=0.1)
+    assert destination.stat().st_size > 0

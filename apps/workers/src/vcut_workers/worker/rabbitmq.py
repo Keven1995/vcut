@@ -10,10 +10,12 @@ import pika
 from pydantic import BaseModel, ValidationError
 
 from vcut_workers.application.clip_analysis import GenerateClipCandidatesUseCase
+from vcut_workers.application.clip_generation import ClipGenerationLimits, GenerateClipUseCase
 from vcut_workers.application.transcription import TranscribeAudioUseCase, TranscriptionCommand
 from vcut_workers.application.video_validation import ValidateUploadedVideoUseCase
 from vcut_workers.config import WorkerSettings
 from vcut_workers.contracts.clip_analysis import AnalyzeClipsCommand, AnalyzeClipsResult
+from vcut_workers.contracts.clip_generation import ClipGenerationCommand, ClipGenerationResult
 from vcut_workers.contracts.messaging import (
     MessageEnvelope,
     MessageKind,
@@ -22,6 +24,7 @@ from vcut_workers.contracts.messaging import (
 )
 from vcut_workers.contracts.transcription import TranscribeAudioCommand
 from vcut_workers.contracts.video_validation import ValidateVideoCommand, VideoValidationResult
+from vcut_workers.domain.clip_generation import ClipStatus
 from vcut_workers.domain.transcription import TranscriptionResult
 from vcut_workers.infrastructure.analysis.deterministic import (
     DeterministicContentAnalyzer,
@@ -142,6 +145,31 @@ class PikaPublisher(RetryPublisher, ResultPublisher):
                     "candidates": [],
                     "hasReliableCandidate": False,
                 },
+                self._result_event_type,
+            )
+            self._publish_result(failure_body)
+        elif self._result_event_type == "ClipGenerationCompleted":
+            try:
+                command = ClipGenerationCommand.model_validate(envelope.data)
+            except ValidationError:
+                return
+            failure = ClipGenerationResult(
+                clip_id=command.clip_id,
+                edit_version=command.edit_version,
+                status=ClipStatus.FAILED,
+                duration_seconds=0,
+                width=0,
+                height=0,
+                aspect_ratio=command.aspect_ratio,
+                error_code=error.code,
+                error_message=error.message,
+            )
+            failure_body = _result_envelope(
+                envelope,
+                cast(
+                    dict[str, object],
+                    failure.model_dump(mode="json", by_alias=True, exclude_none=True),
+                ),
                 self._result_event_type,
             )
             self._publish_result(failure_body)
@@ -355,6 +383,44 @@ def create_clip_analysis_worker(
         command_routing_key="pipeline.video.analyze-clips",
         result_routing_key=settings.rabbitmq_clip_analysis_result_routing_key,
         result_event_type="ClipAnalysisCompleted",
+    )
+
+
+def create_clip_generation_worker(
+    settings: WorkerSettings,
+) -> RabbitMqWorker[ClipGenerationCommand, ClipGenerationResult]:
+    storage = S3ObjectStorage(settings)
+    processor = FFmpegVideoProcessor(
+        settings.ffmpeg_binary,
+        execution_limits=FFmpegExecutionLimits(
+            timeout_seconds=settings.ffmpeg_timeout_seconds,
+            max_temp_bytes=settings.ffmpeg_max_temp_bytes,
+            max_memory_bytes=settings.ffmpeg_max_memory_bytes,
+        ),
+    )
+    use_case = GenerateClipUseCase(
+        storage,
+        processor,
+        ClipGenerationLimits(
+            max_input_size_bytes=settings.clip_max_input_size_bytes,
+            max_duration_seconds=settings.clip_max_duration_seconds,
+            duration_tolerance_seconds=settings.clip_duration_tolerance_seconds,
+            max_caption_cues=settings.clip_max_caption_cues,
+            vertical_width=settings.clip_vertical_width,
+            vertical_height=settings.clip_vertical_height,
+            horizontal_width=settings.clip_horizontal_width,
+            horizontal_height=settings.clip_horizontal_height,
+        ),
+    )
+    return RabbitMqWorker(
+        settings,
+        ClipGenerationCommand,
+        ClipGenerationResult,
+        use_case.execute,
+        command_queue=settings.rabbitmq_clip_generation_queue,
+        command_routing_key="pipeline.video.generate-clip",
+        result_routing_key=settings.rabbitmq_clip_generation_result_routing_key,
+        result_event_type="ClipGenerationCompleted",
     )
 
 

@@ -5,6 +5,7 @@ from vcut_workers.contracts.clip_analysis import (
     AnalyzeClipsResult,
     ClipCommand,
 )
+from vcut_workers.contracts.clip_generation import ClipGenerationCommand, ClipGenerationResult
 from vcut_workers.contracts.messaging import (
     MessageEnvelope,
     MessageKind,
@@ -33,4 +34,6 @@ __all__ = [
     "AnalyzeClipsCommand",
     "AnalyzeClipsResult",
     "ClipCommand",
+    "ClipGenerationCommand",
+    "ClipGenerationResult",
 ]
