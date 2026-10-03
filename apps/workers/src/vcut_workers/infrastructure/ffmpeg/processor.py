@@ -379,10 +379,14 @@ class FFmpegVideoProcessor:
 
 
 def _composition_filter(composition: ClipComposition, sidecar_directory: Path) -> str:
+    crop = composition.crop_settings
+    zoom = _format_filter_number(crop.zoom)
+    crop_x = _format_filter_number(crop.x)
+    crop_y = _format_filter_number(crop.y)
     scale_and_crop = (
-        f"[0:v:0]scale={composition.width}:{composition.height}:"
+        f"[0:v:0]scale=ceil({composition.width}*{zoom}):ceil({composition.height}*{zoom}):"
         f"force_original_aspect_ratio=increase,crop={composition.width}:{composition.height}:"
-        "(in_w-out_w)/2:(in_h-out_h)/2,setsar=1"
+        f"(in_w-out_w)*{crop_x}:(in_h-out_h)*{crop_y},setsar=1"
     )
     filters = [scale_and_crop]
     style = composition.caption_style
@@ -468,6 +472,12 @@ def _format_seconds(value: float) -> str:
     if not isfinite(value) or value < 0:
         raise ValueError("seconds must be finite and non-negative")
     return f"{value:.9f}"
+
+
+def _format_filter_number(value: float) -> str:
+    if not isfinite(value):
+        raise ValueError("filter values must be finite")
+    return f"{value:.6f}"
 
 
 def _parse_frame_rate(value: object) -> float | None:

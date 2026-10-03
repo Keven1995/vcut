@@ -13,6 +13,7 @@ from vcut_workers.domain.clip_generation import (
     CaptionStyle,
     CaptionTrack,
     ClipStatus,
+    CropSettings,
     validate_object_key,
 )
 
@@ -42,6 +43,9 @@ class ClipGenerationCommand(BaseModel):
     caption_cues: Annotated[
         tuple[CaptionCue, ...], Field(alias="captionCues", min_length=0)
     ] = ()
+    crop_settings: Annotated[CropSettings, Field(alias="cropSettings")] = Field(
+        default_factory=CropSettings.centered
+    )
 
     @field_validator("source_object_key", "output_object_key")
     @classmethod
@@ -112,4 +116,5 @@ __all__ = [
     "ClipGenerationCommand",
     "ClipGenerationResult",
     "ClipStatus",
+    "CropSettings",
 ]

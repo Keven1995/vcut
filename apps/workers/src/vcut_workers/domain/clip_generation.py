@@ -196,6 +196,24 @@ class CaptionTrack(BaseModel):
         return self
 
 
+class CropSettings(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True, populate_by_name=True)
+
+    x: float = Field(ge=0, le=1)
+    y: float = Field(ge=0, le=1)
+    zoom: float = Field(ge=1, le=3)
+
+    @classmethod
+    def centered(cls) -> "CropSettings":
+        return cls(x=0.5, y=0.5, zoom=1)
+
+    @model_validator(mode="after")
+    def validate_finite(self) -> "CropSettings":
+        if not all(isfinite(value) for value in (self.x, self.y, self.zoom)):
+            raise ValueError("crop settings must be finite")
+        return self
+
+
 class ClipComposition(BaseModel):
     """Validated, provider-neutral instructions for one deterministic render."""
 
@@ -222,6 +240,11 @@ class ClipComposition(BaseModel):
     caption_style: CaptionStyle = Field(
         validation_alias=AliasChoices("caption_style", "captionStyle"),
         serialization_alias="captionStyle",
+    )
+    crop_settings: CropSettings = Field(
+        default_factory=CropSettings.centered,
+        validation_alias=AliasChoices("crop_settings", "cropSettings"),
+        serialization_alias="cropSettings",
     )
     width: int = Field(gt=0)
     height: int = Field(gt=0)
@@ -325,6 +348,7 @@ __all__ = [
     "CaptionStyle",
     "CaptionTrack",
     "ClipComposition",
+    "CropSettings",
     "ClipStatus",
     "caption_style_for_preset",
     "validate_object_key",

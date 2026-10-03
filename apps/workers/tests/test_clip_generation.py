@@ -81,6 +81,7 @@ def test_command_serializes_the_api_camel_case_contract() -> None:
         "startSeconds",
         "endSeconds",
         "aspectRatio",
+        "cropSettings",
         "captionPreset",
         "captionStyle",
         "captionCues",
@@ -91,6 +92,7 @@ def test_command_serializes_the_api_camel_case_contract() -> None:
     "overrides",
     [
         {"aspectRatio": "1:1"},
+        {"cropSettings": {"x": 1.2, "y": 0.5, "zoom": 1}},
         {"startSeconds": 5.0, "endSeconds": 5.0},
         {"editVersion": 0},
         {"sourceObjectKey": "$(ffmpeg)"},
@@ -192,6 +194,8 @@ def test_generation_downloads_composes_probes_and_uploads_idempotently() -> None
     composition = cast(ClipComposition, processor.compositions[0])
     assert composition.caption_style.font_size == 48
     assert composition.caption_style.animation.value == "KARAOKE"
+    assert composition.crop_settings.x == 0.5
+    assert composition.crop_settings.zoom == 1
     assert composition.caption_track.cues[0].text == "Olá, mundo!"
     assert storage.exists("users/clips/clip-v2.mp4")
 

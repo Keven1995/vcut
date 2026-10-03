@@ -87,6 +87,7 @@ class GenerateClipUseCase:
                         duration_seconds=command.duration_seconds,
                     ),
                     caption_style=command.caption_style,
+                    crop_settings=command.crop_settings,
                     width=self._width_for(command.aspect_ratio),
                     height=self._height_for(command.aspect_ratio),
                 )
