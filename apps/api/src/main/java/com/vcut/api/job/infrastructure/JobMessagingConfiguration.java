@@ -28,21 +28,29 @@ public class JobMessagingConfiguration {
   public static final String COMMAND_QUEUE = "vcut.pipeline.commands.video-validation";
   public static final String TRANSCRIPTION_COMMAND_QUEUE = "vcut.pipeline.commands.transcription";
   public static final String CLIP_ANALYSIS_COMMAND_QUEUE = "vcut.pipeline.commands.clip-analysis";
+  public static final String CLIP_GENERATION_COMMAND_QUEUE =
+      "vcut.pipeline.commands.clip-generation";
   public static final String RETRY_QUEUE = "vcut.pipeline.retry.video-validation";
   public static final String TRANSCRIPTION_RETRY_QUEUE = "vcut.pipeline.retry.transcription";
   public static final String CLIP_ANALYSIS_RETRY_QUEUE = "vcut.pipeline.retry.clip-analysis";
+  public static final String CLIP_GENERATION_RETRY_QUEUE = "vcut.pipeline.retry.clip-generation";
   public static final String DEAD_LETTER_QUEUE = "vcut.pipeline.dlq.video-validation";
   public static final String TRANSCRIPTION_DEAD_LETTER_QUEUE = "vcut.pipeline.dlq.transcription";
   public static final String CLIP_ANALYSIS_DEAD_LETTER_QUEUE = "vcut.pipeline.dlq.clip-analysis";
+  public static final String CLIP_GENERATION_DEAD_LETTER_QUEUE =
+      "vcut.pipeline.dlq.clip-generation";
   public static final String RESULT_QUEUE = "vcut.pipeline.results.api";
   public static final String COMMAND_ROUTING_KEY = "pipeline.video.validate";
   public static final String TRANSCRIPTION_COMMAND_ROUTING_KEY = "pipeline.video.transcribe";
   public static final String CLIP_ANALYSIS_COMMAND_ROUTING_KEY = "pipeline.video.analyze-clips";
+  public static final String CLIP_GENERATION_COMMAND_ROUTING_KEY = "pipeline.video.generate-clip";
   public static final String RESULT_ROUTING_KEY = "pipeline.video.validation.completed";
   public static final String TRANSCRIPTION_RESULT_ROUTING_KEY =
       "pipeline.video.transcription.completed";
   public static final String CLIP_ANALYSIS_RESULT_ROUTING_KEY =
       "pipeline.video.clip-analysis.completed";
+  public static final String CLIP_GENERATION_RESULT_ROUTING_KEY =
+      "pipeline.video.clip-generation.completed";
 
   @Bean
   DirectExchange commandExchange() {
@@ -89,6 +97,14 @@ public class JobMessagingConfiguration {
   }
 
   @Bean
+  Queue clipGenerationCommandQueue() {
+    return QueueBuilder.durable(CLIP_GENERATION_COMMAND_QUEUE)
+        .deadLetterExchange(DEAD_LETTER_EXCHANGE)
+        .deadLetterRoutingKey(CLIP_GENERATION_COMMAND_ROUTING_KEY)
+        .build();
+  }
+
+  @Bean
   Queue retryQueue() {
     return QueueBuilder.durable(RETRY_QUEUE)
         .ttl(300_000)
@@ -116,6 +132,15 @@ public class JobMessagingConfiguration {
   }
 
   @Bean
+  Queue clipGenerationRetryQueue() {
+    return QueueBuilder.durable(CLIP_GENERATION_RETRY_QUEUE)
+        .ttl(300_000)
+        .deadLetterExchange(COMMAND_EXCHANGE)
+        .deadLetterRoutingKey(CLIP_GENERATION_COMMAND_ROUTING_KEY)
+        .build();
+  }
+
+  @Bean
   Queue deadLetterQueue() {
     return QueueBuilder.durable(DEAD_LETTER_QUEUE).build();
   }
@@ -128,6 +153,11 @@ public class JobMessagingConfiguration {
   @Bean
   Queue clipAnalysisDeadLetterQueue() {
     return QueueBuilder.durable(CLIP_ANALYSIS_DEAD_LETTER_QUEUE).build();
+  }
+
+  @Bean
+  Queue clipGenerationDeadLetterQueue() {
+    return QueueBuilder.durable(CLIP_GENERATION_DEAD_LETTER_QUEUE).build();
   }
 
   @Bean
@@ -164,6 +194,15 @@ public class JobMessagingConfiguration {
   }
 
   @Bean
+  Binding clipGenerationCommandBinding(
+      @Qualifier("clipGenerationCommandQueue") Queue clipGenerationCommandQueue,
+      @Qualifier("commandExchange") DirectExchange commandExchange) {
+    return BindingBuilder.bind(clipGenerationCommandQueue)
+        .to(commandExchange)
+        .with(CLIP_GENERATION_COMMAND_ROUTING_KEY);
+  }
+
+  @Bean
   Binding retryBinding(
       @Qualifier("retryQueue") Queue retryQueue,
       @Qualifier("retryExchange") DirectExchange retryExchange) {
@@ -186,6 +225,15 @@ public class JobMessagingConfiguration {
     return BindingBuilder.bind(clipAnalysisRetryQueue)
         .to(retryExchange)
         .with(CLIP_ANALYSIS_COMMAND_ROUTING_KEY);
+  }
+
+  @Bean
+  Binding clipGenerationRetryBinding(
+      @Qualifier("clipGenerationRetryQueue") Queue clipGenerationRetryQueue,
+      @Qualifier("retryExchange") DirectExchange retryExchange) {
+    return BindingBuilder.bind(clipGenerationRetryQueue)
+        .to(retryExchange)
+        .with(CLIP_GENERATION_COMMAND_ROUTING_KEY);
   }
 
   @Bean
@@ -214,6 +262,15 @@ public class JobMessagingConfiguration {
   }
 
   @Bean
+  Binding clipGenerationDeadLetterBinding(
+      @Qualifier("clipGenerationDeadLetterQueue") Queue clipGenerationDeadLetterQueue,
+      @Qualifier("deadLetterExchange") DirectExchange deadLetterExchange) {
+    return BindingBuilder.bind(clipGenerationDeadLetterQueue)
+        .to(deadLetterExchange)
+        .with(CLIP_GENERATION_COMMAND_ROUTING_KEY);
+  }
+
+  @Bean
   Binding deadLetterResultBinding(
       @Qualifier("deadLetterQueue") Queue deadLetterQueue,
       @Qualifier("deadLetterExchange") DirectExchange deadLetterExchange) {
@@ -239,6 +296,15 @@ public class JobMessagingConfiguration {
   }
 
   @Bean
+  Binding deadLetterClipGenerationResultBinding(
+      @Qualifier("clipGenerationDeadLetterQueue") Queue clipGenerationDeadLetterQueue,
+      @Qualifier("deadLetterExchange") DirectExchange deadLetterExchange) {
+    return BindingBuilder.bind(clipGenerationDeadLetterQueue)
+        .to(deadLetterExchange)
+        .with(CLIP_GENERATION_RESULT_ROUTING_KEY);
+  }
+
+  @Bean
   Binding resultBinding(
       @Qualifier("resultQueue") Queue resultQueue,
       @Qualifier("resultExchange") DirectExchange resultExchange) {
@@ -261,6 +327,15 @@ public class JobMessagingConfiguration {
     return BindingBuilder.bind(resultQueue)
         .to(resultExchange)
         .with(CLIP_ANALYSIS_RESULT_ROUTING_KEY);
+  }
+
+  @Bean
+  Binding clipGenerationResultBinding(
+      @Qualifier("resultQueue") Queue resultQueue,
+      @Qualifier("resultExchange") DirectExchange resultExchange) {
+    return BindingBuilder.bind(resultQueue)
+        .to(resultExchange)
+        .with(CLIP_GENERATION_RESULT_ROUTING_KEY);
   }
 
   @Bean

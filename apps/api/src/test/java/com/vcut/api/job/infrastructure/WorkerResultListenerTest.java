@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.rabbitmq.client.Channel;
 import com.vcut.api.clip.application.ClipAnalysisApplicationService;
+import com.vcut.api.clip.application.ClipApplicationService;
 import com.vcut.api.job.application.JobApplicationService;
 import com.vcut.api.shared.messaging.MessageEnvelope;
 import com.vcut.api.shared.messaging.MessageKind;
@@ -49,5 +50,39 @@ class WorkerResultListenerTest {
 
     verify(clipService).handleResult(envelope);
     verify(channel).basicAck(10L, false);
+  }
+
+  @Test
+  void routesClipGenerationStageUpdateToTheGenerationService() throws Exception {
+    ObjectMapper objectMapper = new ObjectMapper().registerModule(new JavaTimeModule());
+    JobApplicationService jobService = mock(JobApplicationService.class);
+    TranscriptionApplicationService transcriptionService =
+        mock(TranscriptionApplicationService.class);
+    ClipAnalysisApplicationService clipAnalysisService = mock(ClipAnalysisApplicationService.class);
+    ClipApplicationService clipService = mock(ClipApplicationService.class);
+    WorkerResultListener listener =
+        new WorkerResultListener(
+            objectMapper, jobService, transcriptionService, clipAnalysisService, clipService);
+    UUID clipId = UUID.randomUUID();
+    MessageEnvelope envelope =
+        new MessageEnvelope(
+            MessageKind.EVENT,
+            UUID.randomUUID(),
+            ClipApplicationService.STAGE_UPDATE_EVENT_TYPE,
+            1,
+            UUID.randomUUID(),
+            clipId,
+            ClipApplicationService.OPERATION,
+            1,
+            UUID.randomUUID(),
+            1,
+            Instant.parse("2026-09-30T12:00:00Z"),
+            Map.of("clipId", clipId, "editVersion", 1, "status", "PROCESSING"));
+    Channel channel = mock(Channel.class);
+
+    listener.receive(new Message(objectMapper.writeValueAsBytes(envelope)), channel, 11L);
+
+    verify(clipService).handleStageUpdate(org.mockito.ArgumentMatchers.any());
+    verify(channel).basicAck(11L, false);
   }
 }
