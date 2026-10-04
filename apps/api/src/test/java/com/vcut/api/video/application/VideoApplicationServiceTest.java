@@ -11,6 +11,7 @@ import com.vcut.api.project.application.ProjectRepository;
 import com.vcut.api.project.domain.Project;
 import com.vcut.api.project.domain.ProjectStatus;
 import com.vcut.api.shared.errors.ValidationException;
+import com.vcut.api.usage.application.UsageApplicationService;
 import com.vcut.api.video.domain.Video;
 import com.vcut.api.video.domain.VideoUploadStatus;
 import com.vcut.api.video.infrastructure.UploadProperties;
@@ -31,6 +32,8 @@ class VideoApplicationServiceTest {
 
   private final ProjectRepository projectRepository = mock(ProjectRepository.class);
   private final VideoRepository videoRepository = mock(VideoRepository.class);
+  private final UsageApplicationService usageApplicationService =
+      mock(UsageApplicationService.class);
   private final StorageStub storage = new StorageStub();
   private VideoApplicationService service;
 
@@ -46,6 +49,7 @@ class VideoApplicationServiceTest {
             videoRepository,
             storage,
             new UploadProperties(1_000, 7_200, List.of("mp4"), List.of("video/mp4")),
+            usageApplicationService,
             Clock.fixed(NOW, ZoneOffset.UTC));
   }
 
@@ -58,6 +62,7 @@ class VideoApplicationServiceTest {
         .matches("users/[^/]+/projects/[^/]+/source/[^/]+/original\\.mp4");
     assertThat(intent.upload().url()).isEqualTo("http://storage/upload");
     verify(videoRepository).save(any(Video.class));
+    verify(usageApplicationService).assertUploadAllowed(USER_ID, 100);
   }
 
   @Test

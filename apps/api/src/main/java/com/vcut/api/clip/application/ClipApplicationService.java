@@ -28,6 +28,9 @@ import com.vcut.api.transcription.domain.Transcription;
 import com.vcut.api.transcription.domain.TranscriptionSegment;
 import com.vcut.api.transcription.domain.TranscriptionStatus;
 import com.vcut.api.transcription.domain.TranscriptionWord;
+import com.vcut.api.usage.application.RetentionApplicationService;
+import com.vcut.api.usage.application.UsageApplicationService;
+import com.vcut.api.usage.domain.RetentionAssetType;
 import com.vcut.api.video.application.ObjectStorage;
 import com.vcut.api.video.application.VideoRepository;
 import com.vcut.api.video.domain.Video;
@@ -77,9 +80,34 @@ public class ClipApplicationService {
   private final OutboxRepository outboxRepository;
   private final ObjectStorage objectStorage;
   private final ObjectMapper objectMapper;
+  private final RetentionApplicationService retentionApplicationService;
+  private final UsageApplicationService usageApplicationService;
   private final Clock clock;
 
   @Autowired
+  public ClipApplicationService(
+      VideoRepository videoRepository,
+      ClipAnalysisRepository clipAnalysisRepository,
+      TranscriptionRepository transcriptionRepository,
+      ClipRepository clipRepository,
+      OutboxRepository outboxRepository,
+      @Nullable ObjectStorage objectStorage,
+      ObjectMapper objectMapper,
+      RetentionApplicationService retentionApplicationService,
+      UsageApplicationService usageApplicationService) {
+    this(
+        videoRepository,
+        clipAnalysisRepository,
+        transcriptionRepository,
+        clipRepository,
+        outboxRepository,
+        objectStorage,
+        objectMapper,
+        retentionApplicationService,
+        usageApplicationService,
+        Clock.systemUTC());
+  }
+
   public ClipApplicationService(
       VideoRepository videoRepository,
       ClipAnalysisRepository clipAnalysisRepository,
@@ -96,6 +124,8 @@ public class ClipApplicationService {
         outboxRepository,
         objectStorage,
         objectMapper,
+        null,
+        null,
         Clock.systemUTC());
   }
 
@@ -108,6 +138,53 @@ public class ClipApplicationService {
       ObjectStorage objectStorage,
       ObjectMapper objectMapper,
       Clock clock) {
+    this(
+        videoRepository,
+        clipAnalysisRepository,
+        transcriptionRepository,
+        clipRepository,
+        outboxRepository,
+        objectStorage,
+        objectMapper,
+        null,
+        null,
+        clock);
+  }
+
+  ClipApplicationService(
+      VideoRepository videoRepository,
+      ClipAnalysisRepository clipAnalysisRepository,
+      TranscriptionRepository transcriptionRepository,
+      ClipRepository clipRepository,
+      OutboxRepository outboxRepository,
+      ObjectStorage objectStorage,
+      ObjectMapper objectMapper,
+      RetentionApplicationService retentionApplicationService,
+      Clock clock) {
+    this(
+        videoRepository,
+        clipAnalysisRepository,
+        transcriptionRepository,
+        clipRepository,
+        outboxRepository,
+        objectStorage,
+        objectMapper,
+        retentionApplicationService,
+        null,
+        clock);
+  }
+
+  ClipApplicationService(
+      VideoRepository videoRepository,
+      ClipAnalysisRepository clipAnalysisRepository,
+      TranscriptionRepository transcriptionRepository,
+      ClipRepository clipRepository,
+      OutboxRepository outboxRepository,
+      ObjectStorage objectStorage,
+      ObjectMapper objectMapper,
+      RetentionApplicationService retentionApplicationService,
+      UsageApplicationService usageApplicationService,
+      Clock clock) {
     this.videoRepository = videoRepository;
     this.clipAnalysisRepository = clipAnalysisRepository;
     this.transcriptionRepository = transcriptionRepository;
@@ -115,6 +192,8 @@ public class ClipApplicationService {
     this.outboxRepository = outboxRepository;
     this.objectStorage = objectStorage;
     this.objectMapper = objectMapper;
+    this.retentionApplicationService = retentionApplicationService;
+    this.usageApplicationService = usageApplicationService;
     this.clock = clock;
   }
 
@@ -231,6 +310,14 @@ public class ClipApplicationService {
         && clip.outputEditVersion() != null
         && clip.outputEditVersion() == version.editVersion()) {
       return aggregate;
+    }
+    if (usageApplicationService != null) {
+      usageApplicationService.assertRenderAllowed(
+          userId,
+          version.endSeconds().subtract(version.startSeconds()),
+          outputWidth(version),
+          outputHeight(version),
+          estimatedOutputBytes(version));
     }
     Instant now = clock.instant();
     Clip queued = clip.queued(now);
@@ -372,6 +459,20 @@ public class ClipApplicationService {
                   result.occurredAt());
     }
     clipRepository.update(next);
+    if (next.status() == ClipStatus.READY
+        && retentionApplicationService != null
+        && objectStorage != null) {
+      objectStorage
+          .head(next.outputObjectKey())
+          .ifPresent(
+              stored ->
+                  retentionApplicationService.register(
+                      next.userId(),
+                      next.projectId(),
+                      next.outputObjectKey(),
+                      RetentionAssetType.PREVIEW,
+                      stored.contentLength()));
+    }
   }
 
   private ClipAggregate matchingAggregate(UUID clipId, int editVersion) {
@@ -408,6 +509,24 @@ public class ClipApplicationService {
     data.put("captionStyle", styleData(version.captionStyle()));
     data.put("captionCues", cueData(version.captionCues()));
     return data;
+  }
+
+  private static int outputWidth(ClipVersion version) {
+    return version.aspectRatio() == AspectRatio.PORTRAIT ? 1080 : 1920;
+  }
+
+  private static int outputHeight(ClipVersion version) {
+    return version.aspectRatio() == AspectRatio.PORTRAIT ? 1920 : 1080;
+  }
+
+  private static long estimatedOutputBytes(ClipVersion version) {
+    BigDecimal seconds = version.endSeconds().subtract(version.startSeconds());
+    long pixels = (long) outputWidth(version) * outputHeight(version);
+    return seconds
+        .multiply(BigDecimal.valueOf(pixels))
+        .multiply(BigDecimal.valueOf(3))
+        .divide(BigDecimal.valueOf(8), 0, java.math.RoundingMode.CEILING)
+        .longValueExact();
   }
 
   private String ownedSourceKey(UUID videoId, UUID userId) {

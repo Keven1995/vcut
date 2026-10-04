@@ -18,6 +18,10 @@ import com.vcut.api.shared.errors.ResourceNotFoundException;
 import com.vcut.api.shared.errors.ValidationException;
 import com.vcut.api.shared.messaging.MessageEnvelope;
 import com.vcut.api.shared.messaging.MessageKind;
+import com.vcut.api.usage.application.RetentionApplicationService;
+import com.vcut.api.usage.application.UsageApplicationService;
+import com.vcut.api.usage.domain.RetentionAssetType;
+import com.vcut.api.usage.domain.UsageMetrics;
 import com.vcut.api.video.application.ObjectStorage;
 import com.vcut.api.video.application.VideoRepository;
 import java.math.BigDecimal;
@@ -68,9 +72,32 @@ public class FinalRenderApplicationService {
   private final OutboxRepository outboxRepository;
   private final ObjectStorage objectStorage;
   private final ObjectMapper objectMapper;
+  private final RetentionApplicationService retentionApplicationService;
+  private final UsageApplicationService usageApplicationService;
   private final Clock clock;
 
   @Autowired
+  public FinalRenderApplicationService(
+      ClipRepository clipRepository,
+      VideoRepository videoRepository,
+      ClipRenderRepository renderRepository,
+      OutboxRepository outboxRepository,
+      @Nullable ObjectStorage objectStorage,
+      ObjectMapper objectMapper,
+      RetentionApplicationService retentionApplicationService,
+      UsageApplicationService usageApplicationService) {
+    this(
+        clipRepository,
+        videoRepository,
+        renderRepository,
+        outboxRepository,
+        objectStorage,
+        objectMapper,
+        retentionApplicationService,
+        usageApplicationService,
+        Clock.systemUTC());
+  }
+
   public FinalRenderApplicationService(
       ClipRepository clipRepository,
       VideoRepository videoRepository,
@@ -85,6 +112,8 @@ public class FinalRenderApplicationService {
         outboxRepository,
         objectStorage,
         objectMapper,
+        null,
+        null,
         Clock.systemUTC());
   }
 
@@ -96,12 +125,36 @@ public class FinalRenderApplicationService {
       ObjectStorage objectStorage,
       ObjectMapper objectMapper,
       Clock clock) {
+    this(
+        clipRepository,
+        videoRepository,
+        renderRepository,
+        outboxRepository,
+        objectStorage,
+        objectMapper,
+        null,
+        null,
+        clock);
+  }
+
+  FinalRenderApplicationService(
+      ClipRepository clipRepository,
+      VideoRepository videoRepository,
+      ClipRenderRepository renderRepository,
+      OutboxRepository outboxRepository,
+      ObjectStorage objectStorage,
+      ObjectMapper objectMapper,
+      RetentionApplicationService retentionApplicationService,
+      UsageApplicationService usageApplicationService,
+      Clock clock) {
     this.clipRepository = clipRepository;
     this.videoRepository = videoRepository;
     this.renderRepository = renderRepository;
     this.outboxRepository = outboxRepository;
     this.objectStorage = objectStorage;
     this.objectMapper = objectMapper;
+    this.retentionApplicationService = retentionApplicationService;
+    this.usageApplicationService = usageApplicationService;
     this.clock = clock;
   }
 
@@ -231,9 +284,60 @@ public class FinalRenderApplicationService {
       throw new IllegalArgumentException("Unsupported final render result status: " + status);
     }
     renderRepository.update(next);
+    if (next.status() == RenderStatus.READY) {
+      recordFinalRenderUsage(next);
+    }
+  }
+
+  private void recordFinalRenderUsage(ClipRender render) {
+    long storageBytes = 0;
+    if (objectStorage != null) {
+      for (String objectKey : List.of(render.outputObjectKey(), render.thumbnailObjectKey())) {
+        var metadata = objectStorage.head(objectKey);
+        if (metadata.isEmpty()) {
+          continue;
+        }
+        storageBytes = Math.addExact(storageBytes, metadata.get().contentLength());
+        if (retentionApplicationService != null) {
+          retentionApplicationService.register(
+              render.userId(),
+              render.projectId(),
+              objectKey,
+              objectKey.equals(render.outputObjectKey())
+                  ? RetentionAssetType.FINAL
+                  : RetentionAssetType.THUMBNAIL,
+              metadata.get().contentLength());
+        }
+      }
+    }
+    if (usageApplicationService != null) {
+      usageApplicationService.recordMetrics(
+          render.userId(),
+          render.clipId(),
+          OPERATION,
+          render.editVersion(),
+          new UsageMetrics(
+              BigDecimal.ZERO,
+              BigDecimal.ZERO,
+              0,
+              BigDecimal.ZERO,
+              BigDecimal.ZERO,
+              retentionApplicationService == null ? storageBytes : 0,
+              0,
+              1),
+          "SUCCEEDED");
+    }
   }
 
   private ClipRender createAndPublish(Clip clip, ClipVersion version, UUID userId) {
+    if (usageApplicationService != null) {
+      usageApplicationService.assertRenderAllowed(
+          userId,
+          version.endSeconds().subtract(version.startSeconds()),
+          outputWidth(version),
+          outputHeight(version),
+          estimatedOutputBytes(version));
+    }
     Instant now = clock.instant();
     ClipRender render =
         ClipRender.queued(
@@ -241,6 +345,24 @@ public class FinalRenderApplicationService {
     renderRepository.save(render);
     publishCommand(render, clip, version, now);
     return render;
+  }
+
+  private static int outputWidth(ClipVersion version) {
+    return version.aspectRatio() == AspectRatio.PORTRAIT ? 1080 : 1920;
+  }
+
+  private static int outputHeight(ClipVersion version) {
+    return version.aspectRatio() == AspectRatio.PORTRAIT ? 1920 : 1080;
+  }
+
+  private static long estimatedOutputBytes(ClipVersion version) {
+    BigDecimal seconds = version.endSeconds().subtract(version.startSeconds());
+    long pixels = (long) outputWidth(version) * outputHeight(version);
+    return seconds
+        .multiply(BigDecimal.valueOf(pixels))
+        .multiply(BigDecimal.valueOf(3))
+        .divide(BigDecimal.valueOf(8), 0, java.math.RoundingMode.CEILING)
+        .longValueExact();
   }
 
   private void publishCommand(ClipRender render, Clip clip, ClipVersion version, Instant now) {

@@ -16,6 +16,8 @@ import com.vcut.api.transcription.domain.Transcription;
 import com.vcut.api.transcription.domain.TranscriptionSegment;
 import com.vcut.api.transcription.domain.TranscriptionStatus;
 import com.vcut.api.transcription.domain.TranscriptionWord;
+import com.vcut.api.usage.application.RetentionApplicationService;
+import com.vcut.api.usage.domain.RetentionAssetType;
 import com.vcut.api.video.application.ObjectStorage;
 import com.vcut.api.video.application.VideoRepository;
 import com.vcut.api.video.domain.Video;
@@ -46,9 +48,30 @@ public class TranscriptionApplicationService {
   private final TranscriptionRepository transcriptionRepository;
   private final OutboxRepository outboxRepository;
   private final ObjectMapper objectMapper;
+  private final com.vcut.api.usage.application.UsageApplicationService usageApplicationService;
+  private final RetentionApplicationService retentionApplicationService;
   private final Clock clock;
 
   @Autowired
+  public TranscriptionApplicationService(
+      VideoRepository videoRepository,
+      com.vcut.api.video.application.ObjectStorage objectStorage,
+      TranscriptionRepository transcriptionRepository,
+      OutboxRepository outboxRepository,
+      ObjectMapper objectMapper,
+      com.vcut.api.usage.application.UsageApplicationService usageApplicationService,
+      RetentionApplicationService retentionApplicationService) {
+    this(
+        videoRepository,
+        objectStorage,
+        transcriptionRepository,
+        outboxRepository,
+        objectMapper,
+        usageApplicationService,
+        retentionApplicationService,
+        Clock.systemUTC());
+  }
+
   public TranscriptionApplicationService(
       VideoRepository videoRepository,
       com.vcut.api.video.application.ObjectStorage objectStorage,
@@ -61,6 +84,8 @@ public class TranscriptionApplicationService {
         transcriptionRepository,
         outboxRepository,
         objectMapper,
+        null,
+        null,
         Clock.systemUTC());
   }
 
@@ -71,11 +96,52 @@ public class TranscriptionApplicationService {
       OutboxRepository outboxRepository,
       ObjectMapper objectMapper,
       Clock clock) {
+    this(
+        videoRepository,
+        objectStorage,
+        transcriptionRepository,
+        outboxRepository,
+        objectMapper,
+        null,
+        null,
+        clock);
+  }
+
+  TranscriptionApplicationService(
+      VideoRepository videoRepository,
+      com.vcut.api.video.application.ObjectStorage objectStorage,
+      TranscriptionRepository transcriptionRepository,
+      OutboxRepository outboxRepository,
+      ObjectMapper objectMapper,
+      com.vcut.api.usage.application.UsageApplicationService usageApplicationService,
+      Clock clock) {
+    this(
+        videoRepository,
+        objectStorage,
+        transcriptionRepository,
+        outboxRepository,
+        objectMapper,
+        usageApplicationService,
+        null,
+        clock);
+  }
+
+  TranscriptionApplicationService(
+      VideoRepository videoRepository,
+      com.vcut.api.video.application.ObjectStorage objectStorage,
+      TranscriptionRepository transcriptionRepository,
+      OutboxRepository outboxRepository,
+      ObjectMapper objectMapper,
+      com.vcut.api.usage.application.UsageApplicationService usageApplicationService,
+      RetentionApplicationService retentionApplicationService,
+      Clock clock) {
     this.videoRepository = videoRepository;
     this.objectStorage = objectStorage;
     this.transcriptionRepository = transcriptionRepository;
     this.outboxRepository = outboxRepository;
     this.objectMapper = objectMapper;
+    this.usageApplicationService = usageApplicationService;
+    this.retentionApplicationService = retentionApplicationService;
     this.clock = clock;
   }
 
@@ -88,6 +154,23 @@ public class TranscriptionApplicationService {
     String language = normalizeLanguage(requestedLanguage);
     int version = transcriptionRepository.nextVersion(videoId);
     Instant now = clock.instant();
+    if (usageApplicationService != null) {
+      usageApplicationService.reserveProcessingMinutes(
+          userId, videoId, "TRANSCRIPTION", version, video.durationSeconds());
+    }
+    if (retentionApplicationService != null) {
+      String audioKey = audioObjectKey(video, version);
+      objectStorage
+          .head(audioKey)
+          .ifPresent(
+              stored ->
+                  retentionApplicationService.register(
+                      userId,
+                      video.projectId(),
+                      audioKey,
+                      RetentionAssetType.AUDIO,
+                      stored.contentLength()));
+    }
     Transcription transcription =
         Transcription.queued(
             UUID.randomUUID(), videoId, userId, version, "configured", language, now);
@@ -155,6 +238,17 @@ public class TranscriptionApplicationService {
         optionalString(update.data().get("errorCode")),
         optionalString(update.data().get("errorMessage")),
         update.occurredAt());
+    if (stageStatus == TranscriptionStatusValue.FAILED && usageApplicationService != null) {
+      transcriptionRepository
+          .findByVideoAndVersion(update.resourceId(), update.version())
+          .ifPresent(
+              transcription ->
+                  usageApplicationService.releaseProcessingReservation(
+                      transcription.userId(),
+                      update.resourceId(),
+                      "TRANSCRIPTION",
+                      update.version()));
+    }
   }
 
   @Transactional
@@ -189,6 +283,14 @@ public class TranscriptionApplicationService {
             result.occurredAt(),
             result.occurredAt());
     transcriptionRepository.complete(completed);
+    if (usageApplicationService != null) {
+      usageApplicationService.confirmProcessing(
+          queued.userId(),
+          result.resourceId(),
+          "TRANSCRIPTION",
+          result.version(),
+          payload.durationSeconds());
+    }
   }
 
   public String audioObjectKey(UUID userId, UUID projectId, UUID videoId, int version) {

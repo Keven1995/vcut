@@ -22,6 +22,8 @@ import com.vcut.api.transcription.application.TranscriptionRepository;
 import com.vcut.api.transcription.domain.Transcription;
 import com.vcut.api.transcription.domain.TranscriptionSegment;
 import com.vcut.api.transcription.domain.TranscriptionStatus;
+import com.vcut.api.usage.application.UsageApplicationService;
+import com.vcut.api.usage.domain.UsageMetrics;
 import com.vcut.api.video.application.VideoRepository;
 import com.vcut.api.video.domain.Video;
 import com.vcut.api.video.domain.VideoUploadStatus;
@@ -60,7 +62,8 @@ public class ClipAnalysisApplicationService {
           "failureCode",
           "provider",
           "durationSeconds",
-          "hasReliableCandidate");
+          "hasReliableCandidate",
+          "usageMetrics");
   private static final Set<String> STAGE_FIELDS =
       Set.of(
           "videoId",
@@ -119,9 +122,27 @@ public class ClipAnalysisApplicationService {
   private final ClipAnalysisRepository clipAnalysisRepository;
   private final OutboxRepository outboxRepository;
   private final ObjectMapper objectMapper;
+  private final UsageApplicationService usageApplicationService;
   private final Clock clock;
 
   @Autowired
+  public ClipAnalysisApplicationService(
+      VideoRepository videoRepository,
+      TranscriptionRepository transcriptionRepository,
+      ClipAnalysisRepository clipAnalysisRepository,
+      OutboxRepository outboxRepository,
+      ObjectMapper objectMapper,
+      UsageApplicationService usageApplicationService) {
+    this(
+        videoRepository,
+        transcriptionRepository,
+        clipAnalysisRepository,
+        outboxRepository,
+        objectMapper,
+        usageApplicationService,
+        Clock.systemUTC());
+  }
+
   public ClipAnalysisApplicationService(
       VideoRepository videoRepository,
       TranscriptionRepository transcriptionRepository,
@@ -134,6 +155,7 @@ public class ClipAnalysisApplicationService {
         clipAnalysisRepository,
         outboxRepository,
         objectMapper,
+        null,
         Clock.systemUTC());
   }
 
@@ -144,11 +166,30 @@ public class ClipAnalysisApplicationService {
       OutboxRepository outboxRepository,
       ObjectMapper objectMapper,
       Clock clock) {
+    this(
+        videoRepository,
+        transcriptionRepository,
+        clipAnalysisRepository,
+        outboxRepository,
+        objectMapper,
+        null,
+        clock);
+  }
+
+  ClipAnalysisApplicationService(
+      VideoRepository videoRepository,
+      TranscriptionRepository transcriptionRepository,
+      ClipAnalysisRepository clipAnalysisRepository,
+      OutboxRepository outboxRepository,
+      ObjectMapper objectMapper,
+      UsageApplicationService usageApplicationService,
+      Clock clock) {
     this.videoRepository = videoRepository;
     this.transcriptionRepository = transcriptionRepository;
     this.clipAnalysisRepository = clipAnalysisRepository;
     this.outboxRepository = outboxRepository;
     this.objectMapper = objectMapper;
+    this.usageApplicationService = usageApplicationService;
     this.clock = clock;
   }
 
@@ -328,6 +369,54 @@ public class ClipAnalysisApplicationService {
         optionalString(result.data().get("errorCode")),
         firstString(result.data().get("errorMessage"), result.data().get("failureCode")),
         result.occurredAt());
+    recordUsageMetrics(result.data().get("usageMetrics"), run, "COMPLETED".equals(status));
+  }
+
+  private void recordUsageMetrics(Object rawMetrics, ClipAnalysisRun run, boolean succeeded) {
+    if (rawMetrics == null || usageApplicationService == null) {
+      return;
+    }
+    Map<String, Object> data = mapValue(rawMetrics, "usageMetrics");
+    validateKeys(
+        data,
+        Set.of("llmTokens", "multimodalMinutes", "cpuSeconds", "gpuSeconds", "bandwidthBytes"),
+        "usage metrics");
+    UsageMetrics metrics =
+        new UsageMetrics(
+            BigDecimal.ZERO,
+            optionalDecimal(data, "multimodalMinutes"),
+            nonNegativeLong(data, "llmTokens"),
+            optionalDecimal(data, "cpuSeconds"),
+            optionalDecimal(data, "gpuSeconds"),
+            0,
+            nonNegativeLong(data, "bandwidthBytes"),
+            0);
+    usageApplicationService.recordMetrics(
+        run.userId(),
+        run.videoId(),
+        OPERATION,
+        run.pipelineVersion(),
+        metrics,
+        succeeded ? "SUCCEEDED" : "FAILED");
+  }
+
+  private static BigDecimal optionalDecimal(Map<String, Object> data, String field) {
+    return data.containsKey(field) ? decimal(data, field) : BigDecimal.ZERO;
+  }
+
+  private static long nonNegativeLong(Map<String, Object> data, String field) {
+    if (!data.containsKey(field)) {
+      return 0;
+    }
+    try {
+      long value = decimal(data, field).longValueExact();
+      if (value < 0) {
+        throw new IllegalArgumentException(field + " must not be negative");
+      }
+      return value;
+    } catch (ArithmeticException exception) {
+      throw new IllegalArgumentException(field + " must be a non-negative integer", exception);
+    }
   }
 
   private ClipCandidate applyAction(UUID userId, UUID candidateId, CandidateAction action) {

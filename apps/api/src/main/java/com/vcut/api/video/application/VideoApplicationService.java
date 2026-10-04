@@ -3,6 +3,9 @@ package com.vcut.api.video.application;
 import com.vcut.api.project.application.ProjectRepository;
 import com.vcut.api.shared.errors.ResourceNotFoundException;
 import com.vcut.api.shared.errors.ValidationException;
+import com.vcut.api.usage.application.RetentionApplicationService;
+import com.vcut.api.usage.application.UsageApplicationService;
+import com.vcut.api.usage.domain.RetentionAssetType;
 import com.vcut.api.video.domain.Video;
 import com.vcut.api.video.domain.VideoUploadStatus;
 import com.vcut.api.video.infrastructure.UploadProperties;
@@ -23,6 +26,8 @@ public class VideoApplicationService {
   private final VideoRepository videoRepository;
   private final ObjectStorage objectStorage;
   private final UploadProperties uploadProperties;
+  private final UsageApplicationService usageApplicationService;
+  private final RetentionApplicationService retentionApplicationService;
   private final Clock clock;
 
   @Autowired
@@ -30,8 +35,17 @@ public class VideoApplicationService {
       ProjectRepository projectRepository,
       VideoRepository videoRepository,
       ObjectStorage objectStorage,
-      UploadProperties uploadProperties) {
-    this(projectRepository, videoRepository, objectStorage, uploadProperties, Clock.systemUTC());
+      UploadProperties uploadProperties,
+      UsageApplicationService usageApplicationService,
+      RetentionApplicationService retentionApplicationService) {
+    this(
+        projectRepository,
+        videoRepository,
+        objectStorage,
+        uploadProperties,
+        usageApplicationService,
+        retentionApplicationService,
+        Clock.systemUTC());
   }
 
   VideoApplicationService(
@@ -40,10 +54,55 @@ public class VideoApplicationService {
       ObjectStorage objectStorage,
       UploadProperties uploadProperties,
       Clock clock) {
+    this(projectRepository, videoRepository, objectStorage, uploadProperties, null, null, clock);
+  }
+
+  public VideoApplicationService(
+      ProjectRepository projectRepository,
+      VideoRepository videoRepository,
+      ObjectStorage objectStorage,
+      UploadProperties uploadProperties) {
+    this(
+        projectRepository,
+        videoRepository,
+        objectStorage,
+        uploadProperties,
+        null,
+        null,
+        Clock.systemUTC());
+  }
+
+  VideoApplicationService(
+      ProjectRepository projectRepository,
+      VideoRepository videoRepository,
+      ObjectStorage objectStorage,
+      UploadProperties uploadProperties,
+      UsageApplicationService usageApplicationService,
+      Clock clock) {
+    this(
+        projectRepository,
+        videoRepository,
+        objectStorage,
+        uploadProperties,
+        usageApplicationService,
+        null,
+        clock);
+  }
+
+  VideoApplicationService(
+      ProjectRepository projectRepository,
+      VideoRepository videoRepository,
+      ObjectStorage objectStorage,
+      UploadProperties uploadProperties,
+      UsageApplicationService usageApplicationService,
+      RetentionApplicationService retentionApplicationService,
+      Clock clock) {
     this.projectRepository = projectRepository;
     this.videoRepository = videoRepository;
     this.objectStorage = objectStorage;
     this.uploadProperties = uploadProperties;
+    this.usageApplicationService = usageApplicationService;
+    this.retentionApplicationService = retentionApplicationService;
     this.clock = clock;
   }
 
@@ -57,6 +116,9 @@ public class VideoApplicationService {
     String normalizedContentType = normalizeContentType(contentType);
     String extension = extension(filename);
     validateUpload(filename, extension, normalizedContentType, sizeBytes);
+    if (usageApplicationService != null) {
+      usageApplicationService.assertUploadAllowed(userId, sizeBytes);
+    }
 
     UUID videoId = UUID.randomUUID();
     String objectKey =
@@ -68,6 +130,10 @@ public class VideoApplicationService {
             videoId, userId, projectId, objectKey, filename, normalizedContentType, sizeBytes, now);
     objectStorage.ensureBucket();
     videoRepository.save(video);
+    if (retentionApplicationService != null) {
+      retentionApplicationService.register(
+          userId, projectId, objectKey, RetentionAssetType.ORIGINAL, sizeBytes);
+    }
     return new UploadIntent(
         video, objectStorage.presignUpload(objectKey, normalizedContentType, sizeBytes));
   }
@@ -100,6 +166,9 @@ public class VideoApplicationService {
     Video uploaded =
         current.uploaded(object.contentLength(), object.checksumSha256(), clock.instant());
     if (videoRepository.updateIfStatus(uploaded, VideoUploadStatus.UPLOADING)) {
+      if (retentionApplicationService != null) {
+        retentionApplicationService.updateSize(uploaded.objectKey(), object.contentLength());
+      }
       return uploaded;
     }
     return findOwned(userId, videoId);
@@ -114,6 +183,9 @@ public class VideoApplicationService {
   public void delete(UUID userId, UUID videoId) {
     Video video = findOwned(userId, videoId);
     objectStorage.delete(video.objectKey());
+    if (retentionApplicationService != null) {
+      retentionApplicationService.markDeleted(video.objectKey());
+    }
     videoRepository.delete(videoId, userId);
   }
 

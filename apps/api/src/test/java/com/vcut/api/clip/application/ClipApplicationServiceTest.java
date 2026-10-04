@@ -3,7 +3,10 @@ package com.vcut.api.clip.application;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
@@ -30,6 +33,7 @@ import com.vcut.api.transcription.domain.Transcription;
 import com.vcut.api.transcription.domain.TranscriptionSegment;
 import com.vcut.api.transcription.domain.TranscriptionStatus;
 import com.vcut.api.transcription.domain.TranscriptionWord;
+import com.vcut.api.usage.application.UsageApplicationService;
 import com.vcut.api.video.application.ObjectStorage;
 import com.vcut.api.video.application.VideoRepository;
 import com.vcut.api.video.domain.Video;
@@ -58,6 +62,7 @@ class ClipApplicationServiceTest {
   private TranscriptionRepository transcriptionRepository;
   private ClipRepository clipRepository;
   private OutboxRepository outboxRepository;
+  private UsageApplicationService usageApplicationService;
   private ClipApplicationService service;
 
   @BeforeEach
@@ -67,6 +72,7 @@ class ClipApplicationServiceTest {
     transcriptionRepository = mock(TranscriptionRepository.class);
     clipRepository = mock(ClipRepository.class);
     outboxRepository = mock(OutboxRepository.class);
+    usageApplicationService = mock(UsageApplicationService.class);
     ObjectStorage objectStorage = mock(ObjectStorage.class);
     Video video = video();
     when(videoRepository.findByIdForUser(videoId, userId)).thenReturn(Optional.of(video));
@@ -84,6 +90,8 @@ class ClipApplicationServiceTest {
             outboxRepository,
             objectStorage,
             new ObjectMapper().registerModule(new JavaTimeModule()),
+            null,
+            usageApplicationService,
             Clock.fixed(now, ZoneOffset.UTC));
   }
 
@@ -199,6 +207,8 @@ class ClipApplicationServiceTest {
 
     ArgumentCaptor<OutboxMessage> outbox = ArgumentCaptor.forClass(OutboxMessage.class);
     verify(outboxRepository).save(outbox.capture());
+    verify(usageApplicationService, times(2))
+        .assertRenderAllowed(eq(userId), eq(BigDecimal.valueOf(3)), eq(1080), eq(1920), anyLong());
     var data = new ObjectMapper().readTree(outbox.getValue().payload()).get("data");
     assertThat(data.get("captionPreset").asText()).isEqualTo("MINIMAL");
     assertThat(data.get("captionCues").get(0).get("sequence").asInt()).isZero();

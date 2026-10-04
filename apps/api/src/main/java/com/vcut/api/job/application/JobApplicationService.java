@@ -13,8 +13,10 @@ import com.vcut.api.shared.correlation.CorrelationContext;
 import com.vcut.api.shared.errors.ConflictException;
 import com.vcut.api.shared.errors.ProcessingException;
 import com.vcut.api.shared.errors.ResourceNotFoundException;
+import com.vcut.api.shared.errors.ValidationException;
 import com.vcut.api.shared.messaging.MessageEnvelope;
 import com.vcut.api.shared.messaging.MessageKind;
+import com.vcut.api.usage.application.UsageApplicationService;
 import com.vcut.api.video.application.VideoRepository;
 import com.vcut.api.video.domain.Video;
 import com.vcut.api.video.domain.VideoUploadStatus;
@@ -44,9 +46,29 @@ public class JobApplicationService {
   private final StageRunRepository stageRunRepository;
   private final OutboxRepository outboxRepository;
   private final ObjectMapper objectMapper;
+  private final UsageApplicationService usageApplicationService;
   private final Clock clock;
 
   @Autowired
+  public JobApplicationService(
+      VideoRepository videoRepository,
+      PipelineRepository pipelineRepository,
+      JobRepository jobRepository,
+      StageRunRepository stageRunRepository,
+      OutboxRepository outboxRepository,
+      ObjectMapper objectMapper,
+      UsageApplicationService usageApplicationService) {
+    this(
+        videoRepository,
+        pipelineRepository,
+        jobRepository,
+        stageRunRepository,
+        outboxRepository,
+        objectMapper,
+        usageApplicationService,
+        Clock.systemUTC());
+  }
+
   public JobApplicationService(
       VideoRepository videoRepository,
       PipelineRepository pipelineRepository,
@@ -61,6 +83,7 @@ public class JobApplicationService {
         stageRunRepository,
         outboxRepository,
         objectMapper,
+        null,
         Clock.systemUTC());
   }
 
@@ -72,12 +95,33 @@ public class JobApplicationService {
       OutboxRepository outboxRepository,
       ObjectMapper objectMapper,
       Clock clock) {
+    this(
+        videoRepository,
+        pipelineRepository,
+        jobRepository,
+        stageRunRepository,
+        outboxRepository,
+        objectMapper,
+        null,
+        clock);
+  }
+
+  JobApplicationService(
+      VideoRepository videoRepository,
+      PipelineRepository pipelineRepository,
+      JobRepository jobRepository,
+      StageRunRepository stageRunRepository,
+      OutboxRepository outboxRepository,
+      ObjectMapper objectMapper,
+      UsageApplicationService usageApplicationService,
+      Clock clock) {
     this.videoRepository = videoRepository;
     this.pipelineRepository = pipelineRepository;
     this.jobRepository = jobRepository;
     this.stageRunRepository = stageRunRepository;
     this.outboxRepository = outboxRepository;
     this.objectMapper = objectMapper;
+    this.usageApplicationService = usageApplicationService;
     this.clock = clock;
   }
 
@@ -208,11 +252,26 @@ public class JobApplicationService {
       throw new IllegalArgumentException("Unsupported worker result status.");
     }
     boolean ready = "READY".equals(status);
+    String failureCode = optionalString(result.data().get("failureCode"));
+    String failureMessage = "Video validation rejected the uploaded media.";
     Video video =
         videoRepository
             .findByIdForUser(result.resourceId(), job.userId())
             .orElseThrow(() -> new ResourceNotFoundException("Video for worker result not found."));
     Instant now = clock.instant();
+    if (ready && usageApplicationService != null) {
+      try {
+        usageApplicationService.validateVideoMetadata(
+            job.userId(),
+            decimal(result.data().get("durationSeconds")),
+            integer(result.data().get("width")),
+            integer(result.data().get("height")));
+      } catch (ValidationException exception) {
+        ready = false;
+        failureCode = "PLAN_MEDIA_LIMIT_EXCEEDED";
+        failureMessage = "Video exceeds the active plan's duration or resolution limit.";
+      }
+    }
     if (video.status() == VideoUploadStatus.VALIDATING) {
       Video validated =
           video.validated(
@@ -223,7 +282,7 @@ public class JobApplicationService {
               integer(result.data().get("height")),
               decimal(result.data().get("frameRate")),
               bool(result.data().get("hasAudio")),
-              optionalString(result.data().get("failureCode")),
+              ready ? null : failureCode,
               now);
       videoRepository.updateValidation(validated, VideoUploadStatus.VALIDATING);
     }
@@ -233,16 +292,16 @@ public class JobApplicationService {
         STAGE,
         ready ? StageRunStatus.COMPLETED : StageRunStatus.FAILED,
         output,
-        ready ? null : optionalString(result.data().get("failureCode")),
-        ready ? null : "Video validation rejected the uploaded media.",
+        ready ? null : failureCode,
+        ready ? null : failureMessage,
         now);
     jobRepository.complete(
         job.id(),
         ready ? JobStatus.COMPLETED : JobStatus.FAILED,
         STAGE,
         100,
-        ready ? null : optionalString(result.data().get("failureCode")),
-        ready ? null : "Video validation rejected the uploaded media.",
+        ready ? null : failureCode,
+        ready ? null : failureMessage,
         now);
     pipelineRepository.updateStatus(
         job.pipelineId(), ready ? PipelineStatus.COMPLETED : PipelineStatus.FAILED, now);

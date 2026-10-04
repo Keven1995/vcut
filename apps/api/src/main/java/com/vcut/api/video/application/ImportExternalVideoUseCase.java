@@ -2,6 +2,8 @@ package com.vcut.api.video.application;
 
 import com.vcut.api.shared.errors.ConflictException;
 import com.vcut.api.shared.errors.ValidationException;
+import com.vcut.api.usage.application.RetentionApplicationService;
+import com.vcut.api.usage.domain.RetentionAssetType;
 import com.vcut.api.video.domain.Video;
 import com.vcut.api.video.domain.VideoImportProvenance;
 import com.vcut.api.video.infrastructure.UploadProperties;
@@ -32,6 +34,8 @@ public class ImportExternalVideoUseCase {
   private final UploadProperties uploadProperties;
   private final VideoImportCancellationRegistry cancellationRegistry;
   private final ResilientExternalVideoImportRunner importRunner;
+  private final com.vcut.api.usage.application.UsageApplicationService usageApplicationService;
+  private final RetentionApplicationService retentionApplicationService;
   private final Clock clock;
 
   @Autowired
@@ -42,7 +46,9 @@ public class ImportExternalVideoUseCase {
       ExternalVideoImportStorage storage,
       UploadProperties uploadProperties,
       VideoImportCancellationRegistry cancellationRegistry,
-      ResilientExternalVideoImportRunner importRunner) {
+      ResilientExternalVideoImportRunner importRunner,
+      com.vcut.api.usage.application.UsageApplicationService usageApplicationService,
+      RetentionApplicationService retentionApplicationService) {
     this(
         validator,
         videoRepository,
@@ -51,6 +57,8 @@ public class ImportExternalVideoUseCase {
         uploadProperties,
         cancellationRegistry,
         importRunner,
+        usageApplicationService,
+        retentionApplicationService,
         Clock.systemUTC());
   }
 
@@ -62,6 +70,8 @@ public class ImportExternalVideoUseCase {
       UploadProperties uploadProperties,
       VideoImportCancellationRegistry cancellationRegistry,
       ResilientExternalVideoImportRunner importRunner,
+      com.vcut.api.usage.application.UsageApplicationService usageApplicationService,
+      RetentionApplicationService retentionApplicationService,
       Clock clock) {
     this.validator = validator;
     this.videoRepository = videoRepository;
@@ -70,6 +80,8 @@ public class ImportExternalVideoUseCase {
     this.uploadProperties = uploadProperties;
     this.cancellationRegistry = cancellationRegistry;
     this.importRunner = importRunner;
+    this.usageApplicationService = usageApplicationService;
+    this.retentionApplicationService = retentionApplicationService;
     this.clock = clock;
   }
 
@@ -85,13 +97,18 @@ public class ImportExternalVideoUseCase {
     try (var registration = cancellationRegistry.register(request.importId(), userId)) {
       ValidateExternalVideoImportUseCase.ValidatedImport validated =
           validator.validate(userId, projectId, request);
+      var planLimits = usageApplicationService.limitsForUser(userId);
       ExternalVideoImporter.ImportLimits limits =
           new ExternalVideoImporter.ImportLimits(
-              Math.min(validated.limits().maxBytes(), uploadProperties.maxFileSizeBytes()),
+              Math.min(
+                  Math.min(validated.limits().maxBytes(), uploadProperties.maxFileSizeBytes()),
+                  planLimits.maxFileSizeBytes()),
               Duration.ofSeconds(
                   Math.min(
-                      validated.limits().maxDuration().toSeconds(),
-                      uploadProperties.maxDurationSeconds())),
+                      Math.min(
+                          validated.limits().maxDuration().toSeconds(),
+                          uploadProperties.maxDurationSeconds()),
+                      planLimits.maxDurationSeconds())),
               validated.limits().timeout());
       media =
           importRunner.run(
@@ -104,6 +121,7 @@ public class ImportExternalVideoUseCase {
               request.importId(),
               registration::isCancelled);
       validateMedia(media, limits.maxBytes());
+      usageApplicationService.assertUploadAllowed(userId, media.sizeBytes());
       if (registration.isCancelled()) {
         throw new CancellationException("External video import was cancelled.");
       }
@@ -141,6 +159,8 @@ public class ImportExternalVideoUseCase {
               .uploaded(metadata.contentLength(), metadata.checksumSha256(), now);
       videoRepository.save(video);
       provenanceRepository.save(videoId, validated.provenance());
+      retentionApplicationService.register(
+          userId, projectId, objectKey, RetentionAssetType.ORIGINAL, metadata.contentLength());
       return new ImportedVideo(video, validated.provenance());
     } catch (RuntimeException exception) {
       if (storageWriteStarted && objectKey != null) {

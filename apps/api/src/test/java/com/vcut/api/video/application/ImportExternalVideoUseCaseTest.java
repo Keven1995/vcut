@@ -11,6 +11,9 @@ import com.vcut.api.project.application.ProjectRepository;
 import com.vcut.api.project.domain.Project;
 import com.vcut.api.project.domain.ProjectStatus;
 import com.vcut.api.shared.errors.ValidationException;
+import com.vcut.api.usage.application.PlanLimits;
+import com.vcut.api.usage.application.RetentionApplicationService;
+import com.vcut.api.usage.domain.RetentionPolicy;
 import com.vcut.api.video.domain.Video;
 import com.vcut.api.video.domain.VideoImportProvenance;
 import com.vcut.api.video.domain.VideoUploadStatus;
@@ -45,10 +48,24 @@ class ImportExternalVideoUseCaseTest {
       new VideoImportCancellationRegistry();
   private final VideoImportDeadLetterRepository deadLetters =
       mock(VideoImportDeadLetterRepository.class);
+  private final com.vcut.api.usage.application.UsageApplicationService usage =
+      mock(com.vcut.api.usage.application.UsageApplicationService.class);
+  private final RetentionApplicationService retention = mock(RetentionApplicationService.class);
   private ImportExternalVideoUseCase useCase;
 
   @BeforeEach
   void setUp() {
+    when(usage.limitsForUser(USER_ID))
+        .thenReturn(
+            new PlanLimits(
+                java.math.BigDecimal.valueOf(60),
+                1_000_000,
+                7_200,
+                1_000_000_000,
+                1,
+                1920,
+                1920,
+                new RetentionPolicy(30, 7, 3, 7, 30, 30, 7)));
     when(projects.findByIdForUser(PROJECT_ID, USER_ID))
         .thenReturn(
             Optional.of(
@@ -82,6 +99,8 @@ class ImportExternalVideoUseCaseTest {
             new UploadProperties(1_000_000, 7_200, List.of("mp4"), List.of("video/mp4")),
             cancellations,
             runner,
+            usage,
+            retention,
             Clock.fixed(NOW, ZoneOffset.UTC));
   }
 
@@ -96,6 +115,14 @@ class ImportExternalVideoUseCaseTest {
     assertThat(storage.ensureBucketCalls).isEqualTo(1);
     verify(videos).save(any(Video.class));
     verify(provenanceRepository).save(any(UUID.class), any(VideoImportProvenance.class));
+    verify(usage).assertUploadAllowed(USER_ID, 29);
+    verify(retention)
+        .register(
+            USER_ID,
+            PROJECT_ID,
+            result.video().objectKey(),
+            com.vcut.api.usage.domain.RetentionAssetType.ORIGINAL,
+            29);
   }
 
   @Test
