@@ -1,6 +1,7 @@
 package com.vcut.api.shared.messaging;
 
 import com.vcut.api.shared.correlation.CorrelationContext;
+import com.vcut.api.shared.correlation.CorrelationTracing;
 import java.time.Instant;
 import java.util.Map;
 import java.util.UUID;
@@ -30,6 +31,7 @@ public final class MessageEnvelopeFactory {
         operation,
         version,
         CorrelationContext.require(),
+        CorrelationTracing.currentTraceparent(),
         attempt,
         Instant.now(),
         data);

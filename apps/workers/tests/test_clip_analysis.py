@@ -14,7 +14,11 @@ from vcut_workers.contracts.clip_analysis import (
     AnalyzeClipsCommand,
     ClipCommand,
 )
-from vcut_workers.domain.clip_analysis import CandidateVariant, DurationPreference
+from vcut_workers.domain.clip_analysis import (
+    AnalysisProviderResponse,
+    CandidateVariant,
+    DurationPreference,
+)
 from vcut_workers.infrastructure.analysis.deterministic import (
     DeterministicContentAnalyzer,
     FallbackContentAnalyzer,
@@ -196,3 +200,16 @@ def test_clip_command_rejects_unsafe_unexpected_and_invalid_values() -> None:
     payload["shell"] = "unexpected"
     with pytest.raises(ValidationError):
         ClipCommand.model_validate(payload)
+
+
+def test_analysis_provider_rejects_infrastructure_commands_and_unstructured_fields() -> None:
+    with pytest.raises(ValidationError):
+        AnalysisProviderResponse.model_validate(
+            {
+                "provider": "fixture",
+                "durationSeconds": 10,
+                "candidates": [],
+                "hasReliableCandidate": False,
+                "shell": "ffmpeg -i input.mp4 output.mp4",
+            }
+        )

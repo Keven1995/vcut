@@ -2,6 +2,7 @@ package com.vcut.api;
 
 import com.vcut.api.shared.correlation.CorrelationIdFilter;
 import com.vcut.api.shared.observability.RequestLoggingFilter;
+import io.opentelemetry.api.trace.Tracer;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.context.properties.ConfigurationPropertiesScan;
@@ -13,9 +14,9 @@ import org.springframework.context.annotation.Bean;
 public class ApiApplication {
 
   @Bean
-  FilterRegistrationBean<CorrelationIdFilter> correlationIdFilterRegistration() {
+  FilterRegistrationBean<CorrelationIdFilter> correlationIdFilterRegistration(Tracer tracer) {
     FilterRegistrationBean<CorrelationIdFilter> registration = new FilterRegistrationBean<>();
-    registration.setFilter(new CorrelationIdFilter());
+    registration.setFilter(new CorrelationIdFilter(tracer));
     registration.setOrder(1);
     return registration;
   }

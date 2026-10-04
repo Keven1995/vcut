@@ -123,15 +123,15 @@ def test_final_render_command_rejects_unsafe_thumbnail_key() -> None:
 def test_final_render_ready_result_requires_thumbnail() -> None:
     with pytest.raises(ValidationError):
         FinalRenderResult(
-            renderId=RENDER_ID,
-            clipId=CLIP_ID,
-            editVersion=4,
+            render_id=RENDER_ID,
+            clip_id=CLIP_ID,
+            edit_version=4,
             status="READY",
-            durationSeconds=3,
+            duration_seconds=3,
             width=1080,
             height=1920,
-            aspectRatio=AspectRatio.VERTICAL,
-            outputObjectKey="users/final/video.mp4",
+            aspect_ratio=AspectRatio.VERTICAL,
+            output_object_key="users/final/video.mp4",
         )
 
 

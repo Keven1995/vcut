@@ -84,6 +84,33 @@ class MessageEnvelopeTest {
         .isInstanceOf(MessageCompatibility.UnsupportedMessageVersionException.class);
   }
 
+  @Test
+  void roundTripsOptionalW3cTraceparentWithoutChangingTheCorrelationId() throws IOException {
+    UUID correlationId = UUID.randomUUID();
+    String traceparent = "00-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-bbbbbbbbbbbbbbbb-01";
+    MessageEnvelope message =
+        new MessageEnvelope(
+            MessageKind.COMMAND,
+            UUID.randomUUID(),
+            "ProcessVideo",
+            1,
+            UUID.randomUUID(),
+            UUID.randomUUID(),
+            "video.process",
+            1,
+            correlationId,
+            traceparent,
+            1,
+            java.time.Instant.now(),
+            Map.of());
+
+    MessageEnvelope roundTrip =
+        objectMapper.readValue(objectMapper.writeValueAsString(message), MessageEnvelope.class);
+
+    assertThat(roundTrip.correlationId()).isEqualTo(correlationId);
+    assertThat(roundTrip.traceparent()).isEqualTo(traceparent);
+  }
+
   private static Path fixturePath() {
     Path rootPath = Path.of("tests/fixtures/events/video-uploaded-v1.json");
     return Files.exists(rootPath)

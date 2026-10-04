@@ -4,7 +4,10 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import Generic, Protocol, TypeVar
+from uuid import UUID
 
+from opentelemetry import trace
+from opentelemetry.trace import SpanKind, Status, StatusCode
 from pydantic import BaseModel, ValidationError
 
 from vcut_workers.contracts.messaging import (
@@ -13,6 +16,7 @@ from vcut_workers.contracts.messaging import (
     StageRunStatus,
     StageRunUpdate,
 )
+from vcut_workers.observability_tracing import current_traceparent, parent_context
 from vcut_workers.worker.errors import (
     ErrorClassification,
     ProcessingErrorInfo,
@@ -73,9 +77,15 @@ class StageRunUpdater(Protocol):
         """Persist the worker-side stage state."""
 
 
+class CommandEligibilityStore(Protocol):
+    def can_process(self, job_id: UUID) -> bool:
+        """Return whether the persisted job is still eligible for execution."""
+
+
 class ConsumerStatus(StrEnum):
     SUCCEEDED = "SUCCEEDED"
     DUPLICATE = "DUPLICATE"
+    CANCELLED = "CANCELLED"
     IN_PROGRESS = "IN_PROGRESS"
     RETRY_SCHEDULED = "RETRY_SCHEDULED"
     FAILED = "FAILED"
@@ -104,6 +114,9 @@ class ConsumerBase(Generic[CommandModelT, ResultModelT]):
         result_publisher: ResultPublisher | None = None,
         stage_run_updater: StageRunUpdater | None = None,
         progress_handler: ProgressHandler[CommandModelT, ResultModelT] | None = None,
+        eligibility_store: CommandEligibilityStore | None = None,
+        queue_name: str | None = None,
+        tracer: trace.Tracer | None = None,
     ) -> None:
         if timeout_seconds <= 0:
             raise ValueError("timeout_seconds must be positive")
@@ -117,6 +130,9 @@ class ConsumerBase(Generic[CommandModelT, ResultModelT]):
         self._result_publisher = result_publisher
         self._stage_run_updater = stage_run_updater
         self._progress_handler = progress_handler
+        self._eligibility_store = eligibility_store
+        self._queue_name = queue_name or command_type.__name__
+        self._tracer = tracer or trace.get_tracer(__name__)
 
     async def consume(self, delivery: MessageDelivery) -> ConsumerOutcome[ResultModelT]:
         try:
@@ -130,6 +146,38 @@ class ConsumerBase(Generic[CommandModelT, ResultModelT]):
             )
             await self._dead_letter(delivery, error_info)
             return ConsumerOutcome(ConsumerStatus.FAILED, error=error_info)
+
+        with self._tracer.start_as_current_span(
+            "worker.command",
+            context=parent_context(envelope.correlation_id, envelope.traceparent),
+            kind=SpanKind.CONSUMER,
+            attributes={
+                "messaging.system": "rabbitmq",
+                "messaging.destination.name": self._queue_name,
+                "messaging.message.id": str(envelope.event_id),
+                "messaging.operation.type": "process",
+                "vcut.command.type": self._command_type.__name__,
+                "vcut.correlation_id": str(envelope.correlation_id),
+                "vcut.delivery.attempt": envelope.attempt,
+            },
+        ) as span:
+            outcome = await self._consume_validated(delivery, envelope, command)
+            if outcome.status in {ConsumerStatus.RETRY_SCHEDULED, ConsumerStatus.FAILED}:
+                span.set_status(Status(StatusCode.ERROR))
+            return outcome
+
+    async def _consume_validated(
+        self,
+        delivery: MessageDelivery,
+        envelope: MessageEnvelope,
+        command: CommandModelT,
+    ) -> ConsumerOutcome[ResultModelT]:
+        if (
+            self._eligibility_store is not None
+            and not self._eligibility_store.can_process(envelope.job_id)
+        ):
+            await delivery.ack()
+            return ConsumerOutcome(ConsumerStatus.CANCELLED)
 
         key = idempotency_key_for(envelope)
         claim = await self._idempotency_store.claim(key)
@@ -221,7 +269,12 @@ class ConsumerBase(Generic[CommandModelT, ResultModelT]):
                 await delivery.reject(requeue=True)
             else:
                 retry_body = (
-                    envelope.model_copy(update={"attempt": retry.next_attempt})
+                    envelope.model_copy(
+                        update={
+                            "attempt": retry.next_attempt,
+                            "traceparent": current_traceparent() or envelope.traceparent,
+                        }
+                    )
                     .model_dump_json(by_alias=True)
                     .encode("utf-8")
                 )

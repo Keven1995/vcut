@@ -56,6 +56,10 @@ class MessageEnvelope(BaseModel):
     operation: str = Field(min_length=1)
     version: int = Field(ge=1)
     correlation_id: UUID = Field(alias="correlationId")
+    traceparent: str | None = Field(
+        default=None,
+        pattern=r"^00-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}$",
+    )
     attempt: int = Field(ge=1)
     occurred_at: datetime = Field(alias="occurredAt")
     data: dict[str, object]

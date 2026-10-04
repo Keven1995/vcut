@@ -35,14 +35,14 @@ def command(*, object_key: str | None = "users/test/video.mp4") -> AnalyzeClipsC
         confidence=0.8,
     )
     return AnalyzeClipsCommand(
-        videoId=VIDEO_ID,
-        pipelineVersion=1,
-        durationSeconds=10,
+        video_id=VIDEO_ID,
+        pipeline_version=1,
+        duration_seconds=10,
         language="en",
         text=segment.text,
         segments=(segment,),
-        durationPreference=DurationPreference.AUTO,
-        objectKey=object_key,
+        duration_preference=DurationPreference.AUTO,
+        object_key=object_key,
     )
 
 

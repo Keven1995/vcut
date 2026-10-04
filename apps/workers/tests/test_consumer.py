@@ -6,6 +6,10 @@ from uuid import UUID
 
 import pika
 import pytest
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
+from opentelemetry.trace import Tracer
 from pydantic import BaseModel, ValidationError
 
 from vcut_workers.config import WorkerSettings
@@ -19,8 +23,10 @@ from vcut_workers.contracts import (
     VideoValidationResult,
 )
 from vcut_workers.worker.consumer import (
+    CommandEligibilityStore,
     ConsumerBase,
     ConsumerStatus,
+    ResultPublisher,
 )
 from vcut_workers.worker.errors import (
     ErrorClassification,
@@ -85,6 +91,15 @@ class FakeStageRunUpdater:
             self.events.append(update.status.value)
 
 
+class FakeCommandEligibilityStore:
+    def __init__(self, eligible: bool) -> None:
+        self.eligible = eligible
+
+    def can_process(self, job_id: UUID) -> bool:
+        assert job_id == JOB_ID
+        return self.eligible
+
+
 class FakeChannel:
     def __init__(self) -> None:
         self.published: list[dict[str, object]] = []
@@ -120,7 +135,11 @@ def result() -> VideoValidationResult:
     )
 
 
-def body(attempt: int = 1, worker_priority: int = 0) -> bytes:
+def body(
+    attempt: int = 1,
+    worker_priority: int = 0,
+    traceparent: str | None = None,
+) -> bytes:
     command_data = cast(dict[str, object], command().model_dump(mode="json", by_alias=True))
     command_data["workerPriority"] = worker_priority
     envelope = MessageEnvelope(
@@ -133,6 +152,7 @@ def body(attempt: int = 1, worker_priority: int = 0) -> bytes:
         operation="video.validate",
         version=1,
         correlationId=CORRELATION_ID,
+        traceparent=traceparent,
         attempt=attempt,
         occurredAt=datetime(2026, 9, 29, tzinfo=UTC),
         data=command_data,
@@ -146,9 +166,12 @@ def consumer(
     publisher: FakePublisher | None = None,
     updater: FakeStageRunUpdater | None = None,
     store: InMemoryIdempotencyStore | None = None,
-    result_publisher: FakeResultPublisher | None = None,
+    result_publisher: ResultPublisher | None = None,
     timeout_seconds: float = 1,
     retry_policy: RetryPolicy | None = None,
+    eligibility_store: CommandEligibilityStore | None = None,
+    queue_name: str | None = None,
+    tracer: Tracer | None = None,
 ) -> ConsumerBase[ValidateVideoCommand, VideoValidationResult]:
     return ConsumerBase(
         ValidateVideoCommand,
@@ -160,6 +183,9 @@ def consumer(
         retry_publisher=publisher,
         result_publisher=result_publisher,
         stage_run_updater=updater,
+        eligibility_store=eligibility_store,
+        queue_name=queue_name,
+        tracer=tracer,
     )
 
 
@@ -374,6 +400,81 @@ async def _test_transient_failure_publishes_retry_before_ack() -> None:
     assert len(publisher.retries) == 1
     assert MessageEnvelope.model_validate_json(publisher.retries[0][0]).attempt == 2
     assert delivery.actions == ["ack"]
+
+
+def test_cancelled_job_is_acknowledged_without_running_its_media_command() -> None:
+    executions: list[ValidateVideoCommand] = []
+
+    def handle(value: ValidateVideoCommand) -> VideoValidationResult:
+        executions.append(value)
+        return result()
+
+    worker = consumer(
+        handle,
+        eligibility_store=FakeCommandEligibilityStore(False),
+    )
+    delivery = FakeDelivery(body())
+
+    outcome = asyncio.run(worker.consume(delivery))
+
+    assert outcome.status is ConsumerStatus.CANCELLED
+    assert delivery.actions == ["ack"]
+    assert executions == []
+
+
+def test_worker_span_continues_the_correlation_trace_without_sensitive_attributes() -> None:
+    exporter = InMemorySpanExporter()
+    provider = TracerProvider()
+    provider.add_span_processor(SimpleSpanProcessor(exporter))
+    worker = consumer(
+        lambda _: result(),
+        queue_name="vcut.pipeline.commands.video-validation",
+        tracer=provider.get_tracer("test-worker"),
+    )
+    traceparent = f"00-{CORRELATION_ID.hex}-1111111111111111-01"
+
+    outcome = asyncio.run(worker.consume(FakeDelivery(body(traceparent=traceparent))))
+
+    spans = exporter.get_finished_spans()
+    assert outcome.status is ConsumerStatus.SUCCEEDED
+    assert len(spans) == 1
+    span = spans[0]
+    assert span.context.trace_id == int(CORRELATION_ID.hex, 16)
+    assert span.parent is not None
+    assert span.parent.span_id == int("1111111111111111", 16)
+    assert span.attributes is not None
+    assert span.attributes["messaging.destination.name"] == (
+        "vcut.pipeline.commands.video-validation"
+    )
+    assert "users/user/source/video.mp4" not in span.attributes.values()
+
+
+def test_published_result_inherits_worker_traceparent() -> None:
+    exporter = InMemorySpanExporter()
+    provider = TracerProvider()
+    provider.add_span_processor(SimpleSpanProcessor(exporter))
+    channel = FakeChannel()
+    publisher = PikaPublisher(
+        channel,
+        WorkerSettings(),
+        command_routing_key="video.validate",
+        result_routing_key="results",
+        result_event_type="VideoValidationCompleted",
+    )
+    worker = consumer(
+        lambda _: result(),
+        result_publisher=publisher,
+        tracer=provider.get_tracer("test-worker"),
+    )
+    traceparent = f"00-{CORRELATION_ID.hex}-1111111111111111-01"
+
+    outcome = asyncio.run(worker.consume(FakeDelivery(body(traceparent=traceparent))))
+
+    assert outcome.status is ConsumerStatus.SUCCEEDED
+    event = MessageEnvelope.model_validate_json(cast(bytes, channel.published[0]["body"]))
+    assert event.traceparent is not None
+    assert event.traceparent.split("-")[1] == CORRELATION_ID.hex
+    assert exporter.get_finished_spans()[0].context.trace_id == int(CORRELATION_ID.hex, 16)
 
 
 def test_transient_failure_publishes_retry_before_ack() -> None:

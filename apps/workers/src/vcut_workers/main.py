@@ -7,6 +7,7 @@ import uvicorn
 from vcut_workers.app import app
 from vcut_workers.config import WorkerSettings
 from vcut_workers.observability import configure_logging
+from vcut_workers.observability_tracing import configure_tracing
 from vcut_workers.worker.rabbitmq import (
     create_clip_analysis_worker,
     create_clip_generation_worker,
@@ -19,6 +20,7 @@ from vcut_workers.worker.retention_cleanup import RetentionCleanupWorker
 
 def main() -> None:
     configure_logging()
+    configure_tracing()
     settings = WorkerSettings.from_environment()
     if settings.retention_cleanup_enabled and os.getenv("WORKER_RUN_ONCE") == "true":
         RetentionCleanupWorker(settings).run_once()
