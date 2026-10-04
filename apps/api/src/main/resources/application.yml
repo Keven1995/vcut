@@ -76,5 +76,19 @@ vcut:
     enabled: ${RABBITMQ_ENABLED:true}
     publisher-delay-ms: ${RABBITMQ_PUBLISHER_DELAY_MS:1000}
   vision:
-    smart-reframing-enabled: ${SMART_REFRAMING_ENABLED:false}
+    smart-reframing-enabled: ${AI_SMART_CROP:${SMART_REFRAMING_ENABLED:false}}
     provider: ${VISION_PROVIDER:deterministic}
+  external-import:
+    enabled: ${EXTERNAL_VIDEO_IMPORT:false}
+    fixture-adapter-enabled: ${EXTERNAL_IMPORT_FIXTURE_ADAPTER_ENABLED:false}
+    max-file-size-bytes: ${EXTERNAL_IMPORT_MAX_FILE_SIZE_BYTES:536870912}
+    max-duration: ${EXTERNAL_IMPORT_MAX_DURATION:2h}
+    timeout: ${EXTERNAL_IMPORT_TIMEOUT:5m}
+    max-attempts: ${EXTERNAL_IMPORT_MAX_ATTEMPTS:3}
+    retry-backoff: ${EXTERNAL_IMPORT_RETRY_BACKOFF:250ms}
+  feature-flags:
+    ai-smart-crop: ${AI_SMART_CROP:${SMART_REFRAMING_ENABLED:false}}
+    face-tracking: ${FACE_TRACKING:false}
+    multimodal-analysis: ${MULTIMODAL_ANALYSIS:false}
+    auto-zoom: ${AUTO_ZOOM:false}
+    external-video-import: ${EXTERNAL_VIDEO_IMPORT:false}
