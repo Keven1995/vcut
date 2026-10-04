@@ -65,6 +65,9 @@ export default function DashboardPage() {
           <span className="brand-mark">V</span>
           <span>vcut</span>
         </Link>
+        <Link className="quiet-action" href="/dashboard/subscription">
+          Assinatura
+        </Link>
         <button className="quiet-action" type="button" onClick={() => void logout()}>
           Sair
         </button>
