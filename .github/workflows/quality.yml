@@ -56,3 +56,60 @@ jobs:
       - run: mypy src tests
       - run: pytest
       - run: python -m build --wheel
+
+  security-scans:
+    name: Dependency and secret scans
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: fs
+          scan-ref: apps
+          scanners: vuln
+          severity: CRITICAL
+          exit-code: "1"
+      - name: Build patched local PostgreSQL image
+        run: docker build --file infrastructure/docker/postgres.Dockerfile --tag vcut/postgres:16.14-alpine3.22 .
+      - uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: image
+          image-ref: vcut/postgres:16.14-alpine3.22
+          scanners: vuln
+          severity: CRITICAL
+          exit-code: "1"
+      - name: Scan for secrets
+        run: >-
+          docker run --rm
+          --volume "$PWD:/repo"
+          zricethezav/gitleaks:v8.24.2
+          git --config=/repo/.gitleaks.toml --gitleaks-ignore-path=/repo/.gitleaksignore --redact --exit-code=1 /repo
+
+  dependency-review:
+    name: Review dependency changes
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/dependency-review-action@v4
+        with:
+          fail-on-severity: critical
+
+  authorization:
+    name: Authorization regression tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+          cache: maven
+      - run: bash ./mvnw -B -ntp -pl apps/api -Dtest=SecurityContractTest,JwtAuthenticationFilterTest,AccountControllerTest test

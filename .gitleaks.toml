@@ -1,0 +1,8 @@
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Ignore generated dependency and build outputs that are not source-controlled."
+paths = [
+  '''(^|/)(node_modules|\.venv|\.venv-linux|\.next|target|__pycache__)/''',
+]
