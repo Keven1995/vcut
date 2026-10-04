@@ -73,6 +73,14 @@ class VideoApplicationServiceTest {
   }
 
   @Test
+  void rejectsFilenameContainingControlCharactersBeforePersistingIntent() {
+    assertThatThrownBy(
+            () ->
+                service.createUploadIntent(USER_ID, PROJECT_ID, "episode\n.mp4", "video/mp4", 100))
+        .isInstanceOf(ValidationException.class);
+  }
+
+  @Test
   void confirmsMatchingObjectAndReturnsSameStateForDuplicateConfirmation() {
     Video uploading =
         Video.uploading(

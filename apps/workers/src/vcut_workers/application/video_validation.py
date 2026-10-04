@@ -26,6 +26,9 @@ class ValidateUploadedVideoUseCase:
     limits: MediaValidationLimits = field(default_factory=MediaValidationLimits)
 
     def execute(self, command: ValidateVideoCommand) -> VideoValidationResult:
+        extension = command.original_filename.rsplit(".", 1)[-1].lower()
+        if extension not in self.limits.accepted_containers:
+            return self._rejected(command, 0, "CONTAINER_NOT_SUPPORTED")
         object_metadata = self.object_storage.head(command.object_key)
         if object_metadata is None:
             return self._rejected(command, 0, "OBJECT_NOT_FOUND")
@@ -37,6 +40,16 @@ class ValidateUploadedVideoUseCase:
         with TemporaryDirectory(prefix="vcut-video-") as directory:
             source = Path(directory) / command.original_filename
             self.object_storage.download(command.object_key, source)
+            try:
+                downloaded_size = source.stat().st_size
+            except OSError:
+                return self._rejected(command, 0, "OBJECT_READ_FAILED")
+            if downloaded_size != object_metadata.content_length:
+                return self._rejected(command, downloaded_size, "SIZE_MISMATCH")
+            if not _matches_media_signature(source, command.original_filename):
+                return self._rejected(
+                    command, object_metadata.content_length, "MAGIC_BYTES_MISMATCH"
+                )
             try:
                 metadata = self.video_processor.probe(source)
             except (OSError, ValueError, MediaProcessingError):
@@ -89,9 +102,6 @@ def _validate_metadata(
     metadata: VideoMetadata,
     limits: MediaValidationLimits,
 ) -> str | None:
-    extension = command.original_filename.rsplit(".", 1)[-1].lower()
-    if extension not in limits.accepted_containers:
-        return "CONTAINER_NOT_SUPPORTED"
     if metadata.container not in limits.accepted_containers:
         return "CONTAINER_NOT_SUPPORTED"
     if metadata.video_codec.lower() not in limits.accepted_video_codecs:
@@ -122,4 +132,18 @@ def _content_type_matches(content_type: str, container: str) -> bool:
         return normalized == "video/quicktime"
     if container == "webm":
         return normalized == "video/webm"
+    return False
+
+
+def _matches_media_signature(source: Path, filename: str) -> bool:
+    try:
+        with source.open("rb") as media_file:
+            header = media_file.read(16)
+    except OSError:
+        return False
+    extension = filename.rsplit(".", 1)[-1].lower()
+    if extension in {"mp4", "mov"}:
+        return len(header) >= 8 and header[4:8] == b"ftyp"
+    if extension == "webm":
+        return header.startswith(b"\x1a\x45\xdf\xa3")
     return False

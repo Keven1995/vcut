@@ -1,7 +1,9 @@
+import re
+from pathlib import PurePosixPath
 from typing import Annotated, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class ValidateVideoCommand(BaseModel):
@@ -15,6 +17,31 @@ class ValidateVideoCommand(BaseModel):
     ]
     declared_size_bytes: Annotated[int, Field(alias="declaredSizeBytes", gt=0)]
     worker_priority: Annotated[int, Field(alias="workerPriority", ge=0, le=10)] = 0
+
+    @field_validator("object_key")
+    @classmethod
+    def validate_object_key(cls, value: str) -> str:
+        path = PurePosixPath(value)
+        if (
+            not re.fullmatch(r"users/[A-Za-z0-9][A-Za-z0-9._/-]{0,510}", value)
+            or "\\" in value
+            or "//" in value
+            or any(part in {".", ".."} for part in path.parts)
+        ):
+            raise ValueError("object key must be an owner-scoped safe path")
+        return value
+
+    @field_validator("original_filename")
+    @classmethod
+    def validate_original_filename(cls, value: str) -> str:
+        if (
+            value in {".", ".."}
+            or "/" in value
+            or "\\" in value
+            or any(ord(character) < 32 or ord(character) == 127 for character in value)
+        ):
+            raise ValueError("original filename must not contain path components")
+        return value
 
 
 class VideoValidationResult(BaseModel):

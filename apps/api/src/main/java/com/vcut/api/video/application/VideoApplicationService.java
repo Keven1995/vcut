@@ -216,7 +216,8 @@ public class VideoApplicationService {
     if (filename == null
         || filename.isBlank()
         || filename.contains("/")
-        || filename.contains("\\")) {
+        || filename.contains("\\")
+        || filename.chars().anyMatch(Character::isISOControl)) {
       throw new ValidationException("Video filename is invalid.");
     }
     String normalized = filename.trim();
