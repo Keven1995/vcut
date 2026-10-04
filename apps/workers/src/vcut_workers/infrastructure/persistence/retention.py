@@ -50,6 +50,18 @@ class PostgresRetentionStore:
                 expires_at = now + timedelta(days=retention_days)
                 cursor.execute(
                     """
+                    SELECT delete_after FROM account_deletion_requests
+                    WHERE user_id = %s AND status IN ('PENDING', 'PROCESSING')
+                    ORDER BY delete_after DESC LIMIT 1
+                    """,
+                    (user_id,),
+                )
+                deletion = cursor.fetchone()
+                if deletion is not None:
+                    deletion_due = deletion[0]
+                    expires_at = max(expires_at, deletion_due) if deletion_due > now else now
+                cursor.execute(
+                    """
                     INSERT INTO retained_objects
                         (id, user_id, project_id, object_key, asset_type, size_bytes,
                          retention_status, expires_at, delete_attempts, created_at)
@@ -94,9 +106,17 @@ class PostgresRetentionStore:
                 cursor.execute(
                     """
                     SELECT id, object_key, delete_attempts FROM retained_objects
-                    WHERE (retention_status = 'RETAINED' AND expires_at <= now())
-                       OR (retention_status = 'DELETE_PENDING' AND last_failure_code IS NOT NULL
-                           AND (claimed_at IS NULL OR claimed_at <= now() - interval '5 minutes'))
+                    WHERE (
+                        (retention_status = 'RETAINED' AND expires_at <= now())
+                        OR (retention_status = 'DELETE_PENDING' AND last_failure_code IS NOT NULL
+                            AND (claimed_at IS NULL OR claimed_at <= now() - interval '5 minutes'))
+                    )
+                    AND NOT EXISTS (
+                        SELECT 1 FROM account_deletion_requests AS deletion
+                        WHERE deletion.user_id = retained_objects.user_id
+                          AND deletion.status IN ('PENDING', 'PROCESSING')
+                          AND deletion.delete_after > now()
+                    )
                     ORDER BY expires_at
                     LIMIT %s
                     """,
@@ -111,9 +131,17 @@ class PostgresRetentionStore:
                     """
                     WITH candidates AS (
                         SELECT id FROM retained_objects
-                        WHERE (retention_status = 'RETAINED' AND expires_at <= now())
-                           OR (retention_status = 'DELETE_PENDING' AND last_failure_code IS NOT NULL
-                               AND (claimed_at IS NULL OR claimed_at <= now() - interval '5 minutes'))
+                        WHERE (
+                            (retention_status = 'RETAINED' AND expires_at <= now())
+                            OR (retention_status = 'DELETE_PENDING' AND last_failure_code IS NOT NULL
+                                AND (claimed_at IS NULL OR claimed_at <= now() - interval '5 minutes'))
+                        )
+                        AND NOT EXISTS (
+                              SELECT 1 FROM account_deletion_requests AS deletion
+                              WHERE deletion.user_id = retained_objects.user_id
+                                AND deletion.status IN ('PENDING', 'PROCESSING')
+                                AND deletion.delete_after > now()
+                          )
                         ORDER BY expires_at
                         FOR UPDATE SKIP LOCKED
                         LIMIT %s

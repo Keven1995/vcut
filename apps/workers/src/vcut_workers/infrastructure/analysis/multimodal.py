@@ -2,7 +2,7 @@ import re
 from collections.abc import Iterable
 from pathlib import Path
 
-from vcut_workers.application.ports import MultimodalAnalyzer
+from vcut_workers.application.ports import MultimodalAnalyzer, SceneDetector
 from vcut_workers.contracts.clip_analysis import AnalyzeClipsCommand
 from vcut_workers.domain.clip_analysis import SemanticSegment
 from vcut_workers.domain.multimodal import (
@@ -11,7 +11,6 @@ from vcut_workers.domain.multimodal import (
     MultimodalFinding,
     MultimodalTopic,
 )
-from vcut_workers.infrastructure.vision.scene import FFmpegSceneDetector
 
 _REACTION_TERMS = re.compile(
     r"\b(wow|whoa|oh my|no way|incredible|amazing|incr[ií]vel|caramba|n[aã]o acredito|haha|risos)\b",
@@ -28,7 +27,7 @@ class DeterministicMultimodalAnalyzer:
 
     def __init__(
         self,
-        scene_detector: FFmpegSceneDetector,
+        scene_detector: SceneDetector,
         *,
         max_visual_findings: int = 40,
     ) -> None:

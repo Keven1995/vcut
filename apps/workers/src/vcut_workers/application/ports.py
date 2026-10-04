@@ -135,6 +135,18 @@ class SceneIntervalStore(Protocol):
         """Persist scene intervals for one immutable pipeline version."""
 
 
+class SceneDetector(Protocol):
+    def detect(
+        self,
+        source: Path,
+        *,
+        start_seconds: float,
+        end_seconds: float,
+        duration_seconds: float,
+    ) -> tuple[SceneInterval, ...]:
+        """Return validated scene boundaries for a local source file."""
+
+
 class RetentionStore(Protocol):
     def find_expired(self, *, limit: int) -> tuple[ExpiredObject, ...]:
         """Return objects whose retention window elapsed without changing their state."""
@@ -147,6 +159,17 @@ class RetentionStore(Protocol):
 
     def record_delete_failure(self, object_id: UUID, failure_code: str) -> None:
         """Record a sanitized deletion failure for idempotent retry."""
+
+
+class AccountDeletionStore(Protocol):
+    def claim_ready_deletions(self, *, limit: int) -> tuple[UUID, ...]:
+        """Claim due account deletions after all owned objects have been removed."""
+
+    def erase_account_data(self, user_id: UUID) -> None:
+        """Erase account data and anonymize retained financial records atomically."""
+
+    def release_deletion(self, user_id: UUID, failure_code: str) -> None:
+        """Return a failed account deletion to the queue with a sanitized error code."""
 
 
 class RetentionRecorder(Protocol):
