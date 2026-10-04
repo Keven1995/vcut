@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { type FormEvent, useState } from "react";
 import { apiRequest, clearAccessToken } from "../../lib/api-client";
 import { invalidateServerQuery, useServerQuery } from "../../lib/server-state";
+import { UsageSummaryPanel } from "../../features/usage/usage-summary-panel";
 
 type Project = {
   id: string;
@@ -91,6 +92,7 @@ export default function DashboardPage() {
         </form>
       </section>
       {error ? <p className="form-error" role="alert">{error}</p> : null}
+      <UsageSummaryPanel />
       <section className="project-grid" aria-live="polite">
         {pending && projects.length === 0 ? <p className="empty-state">Carregando projetos...</p> : null}
         {!pending && projects.length === 0 ? (

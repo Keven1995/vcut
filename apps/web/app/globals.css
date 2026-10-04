@@ -454,6 +454,91 @@ input:focus {
   background: var(--line);
 }
 
+.usage-panel {
+  display: grid;
+  gap: 22px;
+  margin: 0 0 44px;
+  border: 1px solid var(--line);
+  padding: clamp(20px, 4vw, 36px);
+  background: #e9eadf;
+}
+
+.usage-panel-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 20px;
+}
+
+.usage-panel-heading h2,
+.usage-ledger h3 {
+  margin: 0;
+}
+
+.usage-metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px;
+}
+
+.usage-metrics-grid article {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  border: 1px solid var(--line);
+  padding: 18px;
+  background: var(--paper);
+}
+
+.usage-metrics-grid article > span,
+.usage-metrics-grid article small {
+  color: var(--muted);
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
+.usage-metrics-grid article strong {
+  font-size: 1.35rem;
+  overflow-wrap: anywhere;
+}
+
+.usage-meter {
+  height: 7px;
+  margin-top: 5px;
+  background: var(--line);
+}
+
+.usage-meter > span {
+  display: block;
+  height: 100%;
+  background: var(--warm);
+}
+
+.usage-ledger {
+  display: grid;
+  gap: 10px;
+}
+
+.usage-ledger-row {
+  display: grid;
+  grid-template-columns: minmax(120px, 1fr) minmax(150px, 1fr) auto minmax(150px, auto);
+  gap: 12px;
+  border-top: 1px solid var(--line);
+  padding-top: 10px;
+  font-size: 0.78rem;
+}
+
+.usage-ledger-row time,
+.usage-ledger-row span:nth-child(n + 2) {
+  color: var(--muted);
+}
+
+@media (max-width: 700px) {
+  .usage-ledger-row {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
 .project-card,
 .empty-state {
   min-height: 220px;
