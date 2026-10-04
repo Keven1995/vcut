@@ -12,6 +12,7 @@ import com.vcut.api.clip.domain.RenderStatus;
 import com.vcut.api.job.application.OutboxRepository;
 import com.vcut.api.job.domain.OutboxMessage;
 import com.vcut.api.shared.correlation.CorrelationContext;
+import com.vcut.api.shared.correlation.CorrelationTracing;
 import com.vcut.api.shared.errors.ConflictException;
 import com.vcut.api.shared.errors.ProcessingException;
 import com.vcut.api.shared.errors.ResourceNotFoundException;
@@ -377,6 +378,7 @@ public class FinalRenderApplicationService {
             OPERATION,
             1,
             CorrelationContext.current().orElseGet(UUID::randomUUID),
+            CorrelationTracing.currentTraceparent(),
             1,
             now,
             renderData(render, clip, version));

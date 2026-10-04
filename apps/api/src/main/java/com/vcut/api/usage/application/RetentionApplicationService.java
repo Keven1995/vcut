@@ -92,4 +92,9 @@ public class RetentionApplicationService {
       }
     }
   }
+
+  @Transactional
+  public void extendForAccountDeletion(UUID userId, Instant expiresAt) {
+    retentionRepository.extendRetainedForUser(userId, expiresAt);
+  }
 }

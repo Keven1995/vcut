@@ -199,7 +199,10 @@ public class ImportExternalVideoUseCase {
       throw new ValidationException("Imported media file is unavailable.");
     }
     String filename = media.filename();
-    if (filename.contains("/") || filename.contains("\\") || filename.length() > 255) {
+    if (filename.contains("/")
+        || filename.contains("\\")
+        || filename.length() > 255
+        || filename.chars().anyMatch(Character::isISOControl)) {
       throw new ValidationException("Imported media filename is invalid.");
     }
     String contentType = media.contentType().toLowerCase(Locale.ROOT);

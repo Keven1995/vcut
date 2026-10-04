@@ -27,4 +27,6 @@ public interface RetentionRepository {
   void markDeleted(UUID id, Instant deletedAt);
 
   void recordDeleteFailure(UUID id, String failureCode);
+
+  void extendRetainedForUser(UUID userId, Instant expiresAt);
 }

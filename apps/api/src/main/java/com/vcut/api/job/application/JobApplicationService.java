@@ -10,6 +10,7 @@ import com.vcut.api.job.domain.PipelineStatus;
 import com.vcut.api.job.domain.StageRun;
 import com.vcut.api.job.domain.StageRunStatus;
 import com.vcut.api.shared.correlation.CorrelationContext;
+import com.vcut.api.shared.correlation.CorrelationTracing;
 import com.vcut.api.shared.errors.ConflictException;
 import com.vcut.api.shared.errors.ProcessingException;
 import com.vcut.api.shared.errors.ResourceNotFoundException;
@@ -163,6 +164,7 @@ public class JobApplicationService {
             OPERATION,
             1,
             correlationId,
+            CorrelationTracing.currentTraceparent(),
             1,
             now,
             commandData);

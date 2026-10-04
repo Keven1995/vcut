@@ -140,6 +140,15 @@ public class JdbcRetentionRepository implements RetentionRepository {
         id);
   }
 
+  @Override
+  public void extendRetainedForUser(UUID userId, Instant expiresAt) {
+    jdbcTemplate.update(
+        "UPDATE retained_objects SET expires_at = GREATEST(expires_at, ?) "
+            + "WHERE user_id = ? AND retention_status <> 'DELETED'",
+        Timestamp.from(expiresAt),
+        userId);
+  }
+
   private static RetainedObject map(ResultSet resultSet, int rowNumber) throws SQLException {
     return new RetainedObject(
         resultSet.getObject("id", UUID.class),
