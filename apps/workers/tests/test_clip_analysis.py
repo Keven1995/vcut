@@ -86,8 +86,14 @@ def test_deterministic_analyzer_returns_stable_ranked_variants() -> None:
     first = use_case.execute(request)
     second = use_case.execute(request)
 
-    assert first == second
+    assert first.provider == second.provider
+    assert first.duration_seconds == second.duration_seconds
+    assert first.candidates == second.candidates
     assert first.has_reliable_candidate is True
+    assert first.usage_metrics is not None
+    assert second.usage_metrics is not None
+    assert first.usage_metrics.cpu_seconds >= 0
+    assert second.usage_metrics.cpu_seconds >= 0
     assert {candidate.variant for candidate in first.candidates} == {
         CandidateVariant.SHORT,
         CandidateVariant.COMPLETE,
