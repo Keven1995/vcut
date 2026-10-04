@@ -38,3 +38,19 @@ vision:
   frameIntervalSeconds: 1
   maxFramesPerClip: 180
   faceConfidence: 0.5
+
+externalImport:
+  enabled: false
+  fixtureAdapterEnabled: false
+  maxFileSizeBytes: 536870912
+  maxDurationSeconds: 7200
+  timeoutSeconds: 300
+  maxAttempts: 3
+  retryBackoffMilliseconds: 250
+
+experimentalFeatures:
+  AI_SMART_CROP: false
+  FACE_TRACKING: false
+  MULTIMODAL_ANALYSIS: false
+  AUTO_ZOOM: false
+  EXTERNAL_VIDEO_IMPORT: false
