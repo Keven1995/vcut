@@ -13,3 +13,5 @@ vcut:
     jwt-secret: test-secret-with-at-least-32-characters-long
   storage:
     enabled: false
+  external-import:
+    fixture-adapter-enabled: true

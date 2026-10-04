@@ -1,13 +1,16 @@
 package com.vcut.api.video.infrastructure;
 
 import com.vcut.api.shared.errors.ExternalProviderException;
+import com.vcut.api.video.application.ExternalVideoImportStorage;
 import com.vcut.api.video.application.ObjectStorage;
 import java.io.InputStream;
+import java.nio.file.Path;
 import java.time.Instant;
 import java.util.Optional;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 import software.amazon.awssdk.core.ResponseInputStream;
+import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.CreateBucketRequest;
 import software.amazon.awssdk.services.s3.model.HeadBucketRequest;
@@ -21,7 +24,7 @@ import software.amazon.awssdk.services.s3.presigner.model.PutObjectPresignReques
 
 @Component
 @ConditionalOnProperty(prefix = "vcut.storage", name = "enabled", havingValue = "true")
-public class S3CompatibleObjectStorageAdapter implements ObjectStorage {
+public class S3CompatibleObjectStorageAdapter implements ObjectStorage, ExternalVideoImportStorage {
 
   private final S3Client client;
   private final S3Presigner presigner;
@@ -123,6 +126,28 @@ public class S3CompatibleObjectStorageAdapter implements ObjectStorage {
       return response;
     } catch (S3Exception exception) {
       throw providerError("Unable to read object storage object", exception);
+    }
+  }
+
+  @Override
+  public StoredObject upload(
+      Path source, String objectKey, String contentType, long contentLength) {
+    if (source == null || !java.nio.file.Files.isRegularFile(source) || contentLength <= 0) {
+      throw new IllegalArgumentException("import source file and content length are required");
+    }
+    try {
+      client.putObject(
+          PutObjectRequest.builder()
+              .bucket(properties.bucket())
+              .key(objectKey)
+              .contentType(contentType)
+              .contentLength(contentLength)
+              .build(),
+          RequestBody.fromFile(source));
+      return head(objectKey)
+          .orElseThrow(() -> new IllegalStateException("Imported object was not persisted."));
+    } catch (S3Exception exception) {
+      throw providerError("Unable to store imported video", exception);
     }
   }
 

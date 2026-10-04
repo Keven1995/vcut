@@ -7,11 +7,14 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.util.UUID;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.wait.strategy.Wait;
 import org.testcontainers.junit.jupiter.Container;
@@ -126,5 +129,23 @@ class S3CompatibleObjectStorageAdapterIntegrationTest {
 
     storage.delete(objectKey);
     assertThat(storage.head(objectKey)).isEmpty();
+  }
+
+  @Test
+  void uploadsAnImportedLocalFileThroughTheStoragePort(@TempDir Path directory) throws Exception {
+    storage.ensureBucket();
+    String objectKey = "users/imported/projects/project/source/video/original.mp4";
+    Path source = directory.resolve("imported.mp4");
+    byte[] content = "local-fixture-bytes".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+    Files.write(source, content);
+
+    ObjectStorage.StoredObject stored =
+        storage.upload(source, objectKey, "video/mp4", content.length);
+
+    assertThat(stored.objectKey()).isEqualTo(objectKey);
+    assertThat(stored.contentLength()).isEqualTo(content.length);
+    assertThat(stored.contentType()).isEqualTo("video/mp4");
+    assertThat(storage.read(objectKey).readAllBytes()).containsExactly(content);
+    storage.delete(objectKey);
   }
 }
