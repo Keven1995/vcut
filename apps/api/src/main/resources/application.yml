@@ -32,7 +32,7 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info
+        include: health,info,metrics,prometheus
   endpoint:
     health:
       probes:
@@ -53,6 +53,7 @@ vcut:
     secret-key: ${OBJECT_STORAGE_SECRET_KEY:}
     path-style-access: ${OBJECT_STORAGE_PATH_STYLE:true}
     auto-create-bucket: ${OBJECT_STORAGE_AUTO_CREATE_BUCKET:true}
+    capacity-bytes: ${OBJECT_STORAGE_CAPACITY_BYTES:0}
     presigned-url-ttl: ${OBJECT_STORAGE_PRESIGNED_URL_TTL:15m}
   upload:
     max-file-size-bytes: ${UPLOAD_MAX_FILE_SIZE_BYTES:2147483648}
@@ -76,6 +77,11 @@ vcut:
     enabled: ${RABBITMQ_ENABLED:true}
     publisher-delay-ms: ${RABBITMQ_PUBLISHER_DELAY_MS:1000}
     max-priority: ${RABBITMQ_MAX_PRIORITY:10}
+    metrics-poll-interval-ms: ${RABBITMQ_METRICS_POLL_INTERVAL_MS:15000}
+  tracing:
+    enabled: ${TRACING_ENABLED:false}
+    otlp-endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:http://localhost:4317}
+    sample-probability: ${TRACE_SAMPLE_PROBABILITY:1.0}
   vision:
     smart-reframing-enabled: ${AI_SMART_CROP:${SMART_REFRAMING_ENABLED:false}}
     provider: ${VISION_PROVIDER:deterministic}
@@ -146,3 +152,83 @@ vcut:
       webhook-secret: ${PAYMENT_SANDBOX_WEBHOOK_SECRET:}
       signature-tolerance-seconds: ${PAYMENT_WEBHOOK_TOLERANCE_SECONDS:300}
       checkout-base-url: ${PAYMENT_SANDBOX_CHECKOUT_URL:http://localhost:3000/dashboard/subscription}
+  security:
+    rate-limit:
+      enabled: ${RATE_LIMIT_ENABLED:true}
+      window: ${RATE_LIMIT_WINDOW:1m}
+      initial-block: ${RATE_LIMIT_INITIAL_BLOCK:30s}
+      maximum-block: ${RATE_LIMIT_MAXIMUM_BLOCK:15m}
+      violation-cooldown: ${RATE_LIMIT_VIOLATION_COOLDOWN:1h}
+      counter-retention: ${RATE_LIMIT_COUNTER_RETENTION:24h}
+      cleanup-delay-ms: ${RATE_LIMIT_CLEANUP_DELAY_MS:3600000}
+      operations:
+        auth-login:
+          ip-requests: ${RATE_LIMIT_AUTH_LOGIN_IP:10}
+          user-requests: 0
+        auth-register:
+          ip-requests: ${RATE_LIMIT_AUTH_REGISTER_IP:5}
+          user-requests: 0
+        auth-refresh:
+          ip-requests: ${RATE_LIMIT_AUTH_REFRESH_IP:20}
+          user-requests: 10
+        auth-logout:
+          ip-requests: 20
+          user-requests: 10
+        account-delete:
+          ip-requests: 5
+          user-requests: 2
+        video-upload:
+          ip-requests: 40
+          user-requests: 20
+        video-import:
+          ip-requests: 10
+          user-requests: 3
+        import-cancel:
+          ip-requests: 10
+          user-requests: 5
+        video-delete:
+          ip-requests: 10
+          user-requests: 5
+        project-delete:
+          ip-requests: 5
+          user-requests: 3
+        video-process:
+          ip-requests: 30
+          user-requests: 10
+        transcription-request:
+          ip-requests: 30
+          user-requests: 10
+        clip-analysis-request:
+          ip-requests: 30
+          user-requests: 10
+        clip-create:
+          ip-requests: 30
+          user-requests: 10
+        clip-generate:
+          ip-requests: 60
+          user-requests: 20
+        render-request:
+          ip-requests: 20
+          user-requests: 8
+        render-retry:
+          ip-requests: 10
+          user-requests: 5
+        download-url:
+          ip-requests: 60
+          user-requests: 30
+        publication-generate:
+          ip-requests: 30
+          user-requests: 10
+        subscription-checkout:
+          ip-requests: 5
+          user-requests: 3
+        subscription-cancel:
+          ip-requests: 5
+          user-requests: 3
+        payment-webhook:
+          ip-requests: 120
+          user-requests: 0
+    audit:
+      enabled: ${SECURITY_AUDIT_ENABLED:true}
+      retention-days: ${SECURITY_AUDIT_RETENTION_DAYS:365}
+      cleanup-delay-ms: ${SECURITY_AUDIT_CLEANUP_DELAY_MS:86400000}

@@ -10,8 +10,15 @@ vcut:
   messaging:
     enabled: false
   auth:
-    jwt-secret: test-secret-with-at-least-32-characters-long
+    jwt-secret: 00000000000000000000000000000000
   storage:
     enabled: false
   external-import:
     fixture-adapter-enabled: true
+  security:
+    rate-limit:
+      enabled: false
+    audit:
+      enabled: false
+  tracing:
+    enabled: false

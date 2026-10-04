@@ -2,6 +2,13 @@ package com.vcut.api.job.infrastructure;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.vcut.api.auth.infrastructure.JdbcAccountDeletionRepository;
+import com.vcut.api.security.audit.domain.SecurityAuditEvent;
+import com.vcut.api.security.audit.domain.SecurityAuditOutcome;
+import com.vcut.api.security.audit.infrastructure.JdbcSecurityAuditRepository;
+import com.vcut.api.security.ratelimit.domain.RateLimitBucket;
+import com.vcut.api.security.ratelimit.domain.RateLimitSubjectScope;
+import com.vcut.api.security.ratelimit.infrastructure.JdbcRateLimitRepository;
 import com.vcut.api.shared.errors.QuotaExceededException;
 import com.vcut.api.subscription.domain.BillingEventRecord;
 import com.vcut.api.subscription.domain.BillingEventStatus;
@@ -51,7 +58,7 @@ class JobPersistenceIntegrationTest {
 
   @Container
   static final GenericContainer<?> POSTGRES =
-      new GenericContainer<>("postgres:16.6-alpine")
+      new GenericContainer<>("postgres:16.14-alpine3.22")
           .withEnv("POSTGRES_USER", "test")
           .withEnv("POSTGRES_PASSWORD", "test")
           .withEnv("POSTGRES_DB", "test")
@@ -459,6 +466,265 @@ class JobPersistenceIntegrationTest {
     assertThat(reconciliation.appliedEventCount()).isEqualTo(1);
     assertThat(reconciliation.ledgerEntryCount()).isEqualTo(1);
     assertThat(reconciliation.discrepancyMinorUnits()).isZero();
+  }
+
+  @Test
+  void persistsHashedRateLimitStateAndExpiresSanitizedAuditRecords() {
+    Instant now = Instant.parse("2026-10-04T12:00:00Z");
+    var rateLimits = new JdbcRateLimitRepository(jdbc);
+    var transaction = new TransactionTemplate(new DataSourceTransactionManager(dataSource));
+    String subjectHash = "a".repeat(64);
+    transaction.executeWithoutResult(
+        ignored -> {
+          RateLimitBucket initial =
+              RateLimitBucket.empty(RateLimitSubjectScope.IP, subjectHash, "auth-login", now, now);
+          RateLimitBucket created = rateLimits.lockOrCreate(initial);
+          RateLimitBucket.Attempt allowed =
+              created.consume(
+                  now,
+                  now,
+                  1,
+                  java.time.Duration.ofSeconds(10),
+                  java.time.Duration.ofMinutes(2),
+                  java.time.Duration.ofHours(1));
+          assertThat(allowed.allowed()).isTrue();
+          rateLimits.update(allowed.bucket());
+          RateLimitBucket.Attempt blocked =
+              rateLimits
+                  .lockOrCreate(initial)
+                  .consume(
+                      now.plusSeconds(1),
+                      now,
+                      1,
+                      java.time.Duration.ofSeconds(10),
+                      java.time.Duration.ofMinutes(2),
+                      java.time.Duration.ofHours(1));
+          assertThat(blocked.allowed()).isFalse();
+          rateLimits.update(blocked.bucket());
+        });
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT violation_count FROM rate_limit_buckets WHERE subject_hash = ?",
+                Integer.class,
+                subjectHash))
+        .isEqualTo(1);
+
+    var audits = new JdbcSecurityAuditRepository(jdbc);
+    audits.save(
+        new SecurityAuditEvent(
+            UUID.randomUUID(),
+            "AUTH_LOGIN",
+            null,
+            "/api/auth/login",
+            SecurityAuditOutcome.DENIED,
+            401,
+            UUID.randomUUID(),
+            now,
+            now.plusSeconds(60)));
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT COUNT(*) FROM security_audit_events WHERE route_template = ?",
+                Integer.class,
+                "/api/auth/login"))
+        .isEqualTo(1);
+    assertThat(audits.deleteExpiredBefore(now.plusSeconds(60))).isEqualTo(1);
+  }
+
+  @Test
+  void accountDeletionQueueIsCancellableAndUserRemovalPreservesUnlinkedBillingAuditRows() {
+    UUID userId = UUID.randomUUID();
+    UUID projectId = UUID.randomUUID();
+    UUID videoId = UUID.randomUUID();
+    UUID pipelineId = UUID.randomUUID();
+    UUID jobId = UUID.randomUUID();
+    UUID stageRunId = UUID.randomUUID();
+    UUID subscriptionId = UUID.randomUUID();
+    UUID billingEventId = UUID.randomUUID();
+    UUID ledgerId = UUID.randomUUID();
+    UUID auditId = UUID.randomUUID();
+    Instant now = Instant.parse("2026-10-04T12:00:00Z");
+    Timestamp timestamp = Timestamp.from(now);
+    jdbc.update(
+        "INSERT INTO users (id, email, normalized_email, password_hash, status, created_at, updated_at) "
+            + "VALUES (?, ?, ?, ?, 'ACTIVE', ?, ?)",
+        userId,
+        userId + "@example.test",
+        userId + "@example.test",
+        "test-hash",
+        timestamp,
+        timestamp);
+    jdbc.update(
+        "INSERT INTO projects (id, user_id, name, status, created_at, updated_at) "
+            + "VALUES (?, ?, 'Deletion project', 'ACTIVE', ?, ?)",
+        projectId,
+        userId,
+        timestamp,
+        timestamp);
+    jdbc.update(
+        "INSERT INTO videos (id, user_id, project_id, object_key, original_filename, "
+            + "declared_content_type, declared_size_bytes, upload_status, created_at, updated_at) "
+            + "VALUES (?, ?, ?, ?, 'source.mp4', 'video/mp4', 1, 'UPLOADED', ?, ?)",
+        videoId,
+        userId,
+        projectId,
+        "users/" + userId + "/projects/" + projectId + "/source/" + videoId + "/original.mp4",
+        timestamp,
+        timestamp);
+    jdbc.update(
+        "INSERT INTO pipelines (id, user_id, project_id, video_id, version, status, "
+            + "correlation_id, created_at, updated_at) "
+            + "VALUES (?, ?, ?, ?, 1, 'QUEUED', ?, ?, ?)",
+        pipelineId,
+        userId,
+        projectId,
+        videoId,
+        UUID.randomUUID(),
+        timestamp,
+        timestamp);
+    jdbc.update(
+        "INSERT INTO jobs (id, pipeline_id, user_id, project_id, video_id, operation, version, "
+            + "idempotency_key, status, current_stage, attempt, progress, correlation_id, created_at, updated_at) "
+            + "VALUES (?, ?, ?, ?, ?, 'VIDEO_PROCESS', 1, ?, 'QUEUED', 'INGEST', 1, 0, ?, ?, ?)",
+        jobId,
+        pipelineId,
+        userId,
+        projectId,
+        videoId,
+        "account-delete-" + jobId,
+        UUID.randomUUID(),
+        timestamp,
+        timestamp);
+    jdbc.update(
+        "INSERT INTO stage_runs (id, job_id, pipeline_version, stage_name, status, attempt, "
+            + "progress, created_at, updated_at) "
+            + "VALUES (?, ?, 1, 'INGEST', 'QUEUED', 1, 0, ?, ?)",
+        stageRunId,
+        jobId,
+        timestamp,
+        timestamp);
+    jdbc.update(
+        "INSERT INTO outbox_messages (id, aggregate_type, aggregate_id, event_type, routing_key, "
+            + "payload, attempt, available_at, created_at) "
+            + "VALUES (?, 'JOB', ?, 'job.command.v1', 'jobs.video.process', '{}', 0, ?, ?)",
+        UUID.randomUUID(),
+        jobId,
+        timestamp,
+        timestamp);
+    jdbc.update(
+        "INSERT INTO subscriptions (id, user_id, plan_code, status, period_start, period_end, "
+            + "created_at, updated_at) VALUES (?, ?, 'PRO', 'ACTIVE', ?, ?, ?, ?)",
+        subscriptionId,
+        userId,
+        timestamp,
+        Timestamp.from(now.plusSeconds(86_400)),
+        timestamp,
+        timestamp);
+    jdbc.update(
+        "INSERT INTO billing_events (id, provider_code, provider_event_id, event_version, "
+            + "event_type, processing_status, occurred_at, user_id, subscription_id, "
+            + "amount_minor_units, currency, received_at, processed_at) "
+            + "VALUES (?, 'sandbox', ?, 1, 'SUBSCRIPTION_CREATED', 'APPLIED', ?, ?, ?, "
+            + "1200, 'USD', ?, ?)",
+        billingEventId,
+        "provider-event-" + billingEventId,
+        timestamp,
+        userId,
+        subscriptionId,
+        timestamp,
+        timestamp);
+    jdbc.update(
+        "INSERT INTO billing_ledger_entries (id, user_id, subscription_id, billing_event_id, "
+            + "entry_type, amount_minor_units, currency, created_at) "
+            + "VALUES (?, ?, ?, ?, 'CHARGE', 1200, 'USD', ?)",
+        ledgerId,
+        userId,
+        subscriptionId,
+        billingEventId,
+        timestamp);
+    jdbc.update(
+        "INSERT INTO security_audit_events (id, event_type, actor_user_id, route_template, "
+            + "outcome, http_status, correlation_id, occurred_at, expires_at) "
+            + "VALUES (?, 'AUTH_LOGIN', ?, '/api/auth/login', 'SUCCESS', 200, ?, ?, ?)",
+        auditId,
+        userId,
+        UUID.randomUUID(),
+        timestamp,
+        Timestamp.from(now.plusSeconds(60)));
+
+    JdbcAccountDeletionRepository deletionRepository = new JdbcAccountDeletionRepository(jdbc);
+    Instant deleteAfter = now.plusSeconds(30L * 24 * 60 * 60);
+    deletionRepository.enqueue(userId, now, deleteAfter);
+    deletionRepository.enqueue(userId, now.plusSeconds(1), deleteAfter.plusSeconds(1));
+    assertThat(deletionRepository.findPendingDeleteAfter(userId)).contains(deleteAfter);
+    assertThat(jdbc.queryForObject("SELECT status FROM jobs WHERE id = ?", String.class, jobId))
+        .isEqualTo("CANCELLED");
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT status FROM pipelines WHERE id = ?", String.class, pipelineId))
+        .isEqualTo("CANCELLED");
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT status FROM stage_runs WHERE id = ?", String.class, stageRunId))
+        .isEqualTo("FAILED");
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT COUNT(*) FROM outbox_messages WHERE aggregate_id = ?",
+                Integer.class,
+                jobId))
+        .isZero();
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT status FROM subscriptions WHERE id = ?", String.class, subscriptionId))
+        .isEqualTo("CANCELED");
+    assertThat(deletionRepository.cancelPending(userId, now.plusSeconds(1))).isTrue();
+    assertThat(deletionRepository.cancelPending(userId, now.plusSeconds(1))).isFalse();
+
+    jdbc.update("UPDATE subscriptions SET user_id = NULL WHERE user_id = ?", userId);
+    jdbc.update("UPDATE billing_events SET user_id = NULL WHERE user_id = ?", userId);
+    jdbc.update("UPDATE billing_ledger_entries SET user_id = NULL WHERE user_id = ?", userId);
+    jdbc.update("DELETE FROM users WHERE id = ?", userId);
+
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT COUNT(*) FROM projects WHERE id = ?", Integer.class, projectId))
+        .isZero();
+    assertThat(
+            jdbc.queryForObject("SELECT COUNT(*) FROM videos WHERE id = ?", Integer.class, videoId))
+        .isZero();
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT COUNT(*) FROM pipelines WHERE id = ?", Integer.class, pipelineId))
+        .isZero();
+    assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM jobs WHERE id = ?", Integer.class, jobId))
+        .isZero();
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT COUNT(*) FROM stage_runs WHERE id = ?", Integer.class, stageRunId))
+        .isZero();
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT user_id FROM subscriptions WHERE id = ?", UUID.class, subscriptionId))
+        .isNull();
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT user_id FROM billing_events WHERE id = ?", UUID.class, billingEventId))
+        .isNull();
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT user_id FROM billing_ledger_entries WHERE id = ?", UUID.class, ledgerId))
+        .isNull();
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT actor_user_id FROM security_audit_events WHERE id = ?",
+                UUID.class,
+                auditId))
+        .isNull();
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT COUNT(*) FROM account_deletion_requests "
+                    + "WHERE user_id IS NULL AND status = 'CANCELLED'",
+                Integer.class))
+        .isEqualTo(1);
   }
 
   private static void reserveAfterBarrier(
