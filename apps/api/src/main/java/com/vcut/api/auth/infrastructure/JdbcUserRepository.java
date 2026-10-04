@@ -52,6 +52,15 @@ public class JdbcUserRepository implements UserRepository {
         "UPDATE users SET updated_at = ? WHERE id = ?", Timestamp.from(updatedAt), userId);
   }
 
+  @Override
+  public void updateStatus(UUID userId, UserStatus status, Instant updatedAt) {
+    jdbcTemplate.update(
+        "UPDATE users SET status = ?, updated_at = ? WHERE id = ?",
+        status.name(),
+        Timestamp.from(updatedAt),
+        userId);
+  }
+
   private Optional<User> queryOne(String sql, Object parameter) {
     return jdbcTemplate.query(sql, JdbcUserRepository::mapUser, parameter).stream().findFirst();
   }

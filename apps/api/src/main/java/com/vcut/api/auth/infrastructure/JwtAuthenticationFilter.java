@@ -1,5 +1,6 @@
 package com.vcut.api.auth.infrastructure;
 
+import com.vcut.api.auth.application.UserRepository;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -12,9 +13,11 @@ import org.springframework.web.filter.OncePerRequestFilter;
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
   private final JwtTokenService jwtTokenService;
+  private final UserRepository userRepository;
 
-  public JwtAuthenticationFilter(JwtTokenService jwtTokenService) {
+  public JwtAuthenticationFilter(JwtTokenService jwtTokenService, UserRepository userRepository) {
     this.jwtTokenService = jwtTokenService;
+    this.userRepository = userRepository;
   }
 
   @Override
@@ -31,6 +34,13 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
   private void authenticate(String token) {
     try {
       JwtTokenService.AuthenticatedToken authenticatedToken = jwtTokenService.parse(token);
+      if (userRepository
+          .findById(authenticatedToken.userId())
+          .filter(user -> user.canAuthenticate())
+          .isEmpty()) {
+        SecurityContextHolder.clearContext();
+        return;
+      }
       SecurityContextHolder.getContext()
           .setAuthentication(
               UsernamePasswordAuthenticationToken.authenticated(

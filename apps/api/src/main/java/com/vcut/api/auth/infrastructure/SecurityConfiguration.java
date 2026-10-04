@@ -1,5 +1,6 @@
 package com.vcut.api.auth.infrastructure;
 
+import com.vcut.api.auth.application.UserRepository;
 import java.util.List;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -36,8 +37,9 @@ public class SecurityConfiguration {
   }
 
   @Bean
-  JwtAuthenticationFilter jwtAuthenticationFilter(JwtTokenService jwtTokenService) {
-    return new JwtAuthenticationFilter(jwtTokenService);
+  JwtAuthenticationFilter jwtAuthenticationFilter(
+      JwtTokenService jwtTokenService, UserRepository userRepository) {
+    return new JwtAuthenticationFilter(jwtTokenService, userRepository);
   }
 
   @Bean
@@ -84,8 +86,11 @@ public class SecurityConfiguration {
             "Authorization",
             "Content-Type",
             "X-Correlation-Id",
+            "traceparent",
+            "tracestate",
             "X-Payment-Timestamp",
             "X-Payment-Signature"));
+    configuration.setExposedHeaders(List.of("X-Correlation-Id", "traceparent"));
     configuration.setAllowCredentials(true);
 
     UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();

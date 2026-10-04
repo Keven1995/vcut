@@ -27,6 +27,7 @@ public class AuthApplicationService {
   private final PasswordEncoder passwordEncoder;
   private final JwtTokenService jwtTokenService;
   private final AuthProperties authProperties;
+  private final AccountDeletionApplicationService accountDeletionApplicationService;
   private final SecureRandom secureRandom;
   private final Clock clock;
 
@@ -36,13 +37,15 @@ public class AuthApplicationService {
       RefreshSessionRepository refreshSessionRepository,
       PasswordEncoder passwordEncoder,
       JwtTokenService jwtTokenService,
-      AuthProperties authProperties) {
+      AuthProperties authProperties,
+      AccountDeletionApplicationService accountDeletionApplicationService) {
     this(
         userRepository,
         refreshSessionRepository,
         passwordEncoder,
         jwtTokenService,
         authProperties,
+        accountDeletionApplicationService,
         new SecureRandom(),
         Clock.systemUTC());
   }
@@ -55,11 +58,32 @@ public class AuthApplicationService {
       AuthProperties authProperties,
       SecureRandom secureRandom,
       Clock clock) {
+    this(
+        userRepository,
+        refreshSessionRepository,
+        passwordEncoder,
+        jwtTokenService,
+        authProperties,
+        null,
+        secureRandom,
+        clock);
+  }
+
+  AuthApplicationService(
+      UserRepository userRepository,
+      RefreshSessionRepository refreshSessionRepository,
+      PasswordEncoder passwordEncoder,
+      JwtTokenService jwtTokenService,
+      AuthProperties authProperties,
+      AccountDeletionApplicationService accountDeletionApplicationService,
+      SecureRandom secureRandom,
+      Clock clock) {
     this.userRepository = userRepository;
     this.refreshSessionRepository = refreshSessionRepository;
     this.passwordEncoder = passwordEncoder;
     this.jwtTokenService = jwtTokenService;
     this.authProperties = authProperties;
+    this.accountDeletionApplicationService = accountDeletionApplicationService;
     this.secureRandom = secureRandom;
     this.clock = clock;
   }
@@ -87,12 +111,25 @@ public class AuthApplicationService {
 
   @Transactional
   public AuthResult login(String email, String password) {
-    User user =
+    User candidate =
         userRepository
             .findByNormalizedEmail(normalizeEmail(email))
-            .filter(User::canAuthenticate)
-            .filter(candidate -> passwordEncoder.matches(password, candidate.passwordHash()))
+            .filter(existingUser -> passwordEncoder.matches(password, existingUser.passwordHash()))
             .orElseThrow(() -> new UnauthorizedException("Invalid email or password."));
+    User user = candidate;
+    if (candidate.status() == UserStatus.DELETION_PENDING) {
+      if (accountDeletionApplicationService == null
+          || !accountDeletionApplicationService.cancelForReturningUser(candidate.id())) {
+        throw new UnauthorizedException("Invalid email or password.");
+      }
+      user =
+          userRepository
+              .findById(candidate.id())
+              .orElseThrow(() -> new UnauthorizedException("Invalid email or password."));
+    }
+    if (!user.canAuthenticate()) {
+      throw new UnauthorizedException("Invalid email or password.");
+    }
     userRepository.touch(user.id(), clock.instant());
     return issueSession(user);
   }

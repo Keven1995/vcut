@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -134,8 +135,42 @@ class AuthApplicationServiceTest {
     verify(refreshSessionRepository).revoke(current.id(), replacement.id(), NOW);
   }
 
+  @Test
+  void returningUserCanRestoreAnAccountDuringTheThirtyDayDeletionWindow() {
+    UUID userId = UUID.randomUUID();
+    User pending = user(userId, UserStatus.DELETION_PENDING);
+    User active = user(userId, UserStatus.ACTIVE);
+    AccountDeletionApplicationService deletionService =
+        mock(AccountDeletionApplicationService.class);
+    service =
+        new AuthApplicationService(
+            userRepository,
+            refreshSessionRepository,
+            passwordEncoder,
+            jwtTokenService,
+            properties,
+            deletionService,
+            new java.security.SecureRandom(),
+            Clock.fixed(NOW, ZoneOffset.UTC));
+    when(userRepository.findByNormalizedEmail("person@example.com"))
+        .thenReturn(Optional.of(pending));
+    when(passwordEncoder.matches("strong-password", pending.passwordHash())).thenReturn(true);
+    when(deletionService.cancelForReturningUser(userId)).thenReturn(true);
+    when(userRepository.findById(userId)).thenReturn(Optional.of(active));
+    when(jwtTokenService.issue(any(UUID.class), anyString()))
+        .thenReturn(new JwtTokenService.IssuedAccessToken("access-token", NOW.plusSeconds(900)));
+
+    AuthResult result = service.login("person@example.com", "strong-password");
+
+    assertThat(result.accessToken()).isEqualTo("access-token");
+    verify(deletionService).cancelForReturningUser(userId);
+  }
+
   private static User user(UUID id) {
-    return new User(
-        id, "person@example.com", "person@example.com", "hash", UserStatus.ACTIVE, NOW, NOW);
+    return user(id, UserStatus.ACTIVE);
+  }
+
+  private static User user(UUID id, UserStatus status) {
+    return new User(id, "person@example.com", "person@example.com", "hash", status, NOW, NOW);
   }
 }

@@ -1,5 +1,6 @@
 package com.vcut.api.auth.presentation;
 
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -40,5 +41,13 @@ class SecurityContractTest {
                 .content("{}"))
         .andExpect(status().isBadGateway())
         .andExpect(jsonPath("$.code").value("EXTERNAL_PROVIDER_ERROR"));
+  }
+
+  @Test
+  void accountDeletionRequiresAnAuthenticatedSession() throws Exception {
+    mockMvc
+        .perform(delete("/api/account"))
+        .andExpect(status().isUnauthorized())
+        .andExpect(jsonPath("$.code").value("AUTHENTICATION_REQUIRED"));
   }
 }
