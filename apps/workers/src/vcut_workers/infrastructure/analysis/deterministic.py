@@ -9,6 +9,7 @@ from vcut_workers.domain.clip_analysis import (
     DurationPreference,
     SemanticSegment,
 )
+from vcut_workers.domain.multimodal import MultimodalFinding, MultimodalTopic
 
 
 class DeterministicContentAnalyzer:
@@ -41,7 +42,18 @@ class DeterministicContentAnalyzer:
             for variant, start, end in intervals:
                 if end - start > 90:
                     continue
-                scores = _scores(segment, end - start, command)
+                findings = tuple(
+                    finding
+                    for finding in command.multimodal_context
+                    if finding.start_seconds < segment.end_seconds
+                    and finding.end_seconds > segment.start_seconds
+                )
+                scores = _scores(segment, end - start, command, findings)
+                justification = (
+                    "Trecho com fala suficiente, timestamps validos e fronteira semantica deterministica."
+                    if not findings
+                    else "Trecho validado por transcricao e sinais multimodais basicos de contexto."
+                )
                 candidates.append(
                     ClipCandidate(
                         id=uuid5(
@@ -56,7 +68,7 @@ class DeterministicContentAnalyzer:
                         end_seconds=end,
                         title=_title(segment.text),
                         description=segment.text,
-                        justification="Trecho com fala suficiente, timestamps validos e fronteira semantica deterministica.",
+                        justification=justification,
                         scores=scores,
                         internal_score=_internal_score(scores, end - start, command),
                     )
@@ -88,13 +100,37 @@ def _is_reliable(segment: SemanticSegment) -> bool:
     return len(text) >= 8 and duration >= 1.0 and (segment.confidence is None or segment.confidence >= 0.5)
 
 
-def _scores(segment: SemanticSegment, duration: float, command: AnalyzeClipsCommand) -> CandidateScores:
+def _scores(
+    segment: SemanticSegment,
+    duration: float,
+    command: AnalyzeClipsCommand,
+    multimodal_findings: tuple[MultimodalFinding, ...] = (),
+) -> CandidateScores:
     confidence = segment.confidence if segment.confidence is not None else 0.6
     punctuation = 1.0 if segment.text.rstrip().endswith((".", "!", "?")) else 0.65
     independence = min(1.0, max(0.4, duration / 4.0))
     engagement = min(1.0, max(0.35, len(segment.text) / 120.0))
     target = _target_seconds(command.duration_preference, command.custom_duration_seconds)
     context = 0.75 if target is None else max(0.35, 1 - abs(duration - target) / target)
+    visual_confidence = max(
+        (
+            finding.confidence
+            for finding in multimodal_findings
+            if finding.topic is MultimodalTopic.VISUAL_CONTEXT
+        ),
+        default=0,
+    )
+    if visual_confidence > 0:
+        context = max(context, 0.5 + 0.4 * visual_confidence)
+    interaction_confidence = max(
+        (
+            finding.confidence
+            for finding in multimodal_findings
+            if finding.topic in (MultimodalTopic.REACTION, MultimodalTopic.GAMEPLAY)
+        ),
+        default=0,
+    )
+    engagement = max(engagement, interaction_confidence)
     return CandidateScores(
         hook=confidence,
         context=context,

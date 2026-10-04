@@ -10,6 +10,7 @@ from vcut_workers.domain.clip_analysis import (
     ClipCandidate,
     DurationPreference,
 )
+from vcut_workers.domain.multimodal import MultimodalFinding
 from vcut_workers.domain.transcription import ConfidenceScore, LanguageCode
 
 
@@ -68,6 +69,10 @@ class AnalyzeClipsCommand(BaseModel):
         validation_alias=AliasChoices("custom_duration_seconds", "customDurationSeconds"),
         serialization_alias="customDurationSeconds",
     )
+    object_key: Annotated[str | None, Field(alias="objectKey", min_length=1, max_length=512)] = None
+    multimodal_context: Annotated[
+        tuple[MultimodalFinding, ...], Field(alias="multimodalContext")
+    ] = ()
 
     @model_validator(mode="after")
     def validate_segments(self) -> "AnalyzeClipsCommand":
@@ -136,4 +141,5 @@ __all__ = [
     "ClipCandidate",
     "ClipCommand",
     "DurationPreference",
+    "MultimodalFinding",
 ]

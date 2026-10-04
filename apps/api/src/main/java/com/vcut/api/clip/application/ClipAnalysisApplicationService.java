@@ -192,6 +192,7 @@ public class ClipAnalysisApplicationService {
     commandData.put("videoId", videoId);
     commandData.put("pipelineVersion", version);
     commandData.put("durationSeconds", video.durationSeconds());
+    commandData.put("objectKey", video.objectKey());
     commandData.put("language", transcription.language());
     commandData.put("text", transcription.text());
     commandData.put("segments", segments(transcription.segments()));

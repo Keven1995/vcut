@@ -88,6 +88,12 @@ class WorkerSettings(BaseModel):
     vision_frame_interval_seconds: float = Field(default=1, gt=0)
     vision_max_frames: int = Field(default=180, gt=0)
     vision_face_confidence: float = Field(default=0.5, gt=0, le=1)
+    multimodal_analysis_enabled: bool = False
+    multimodal_analysis_provider: Literal["deterministic", "transcript-fallback"] = (
+        "deterministic"
+    )
+    face_tracking_enabled: bool = False
+    auto_zoom_enabled: bool = False
 
     @classmethod
     def from_environment(cls) -> "WorkerSettings":
@@ -173,7 +179,9 @@ class WorkerSettings(BaseModel):
             clip_vertical_height=int(os.getenv("CLIP_VERTICAL_HEIGHT", "1920")),
             clip_horizontal_width=int(os.getenv("CLIP_HORIZONTAL_WIDTH", "1920")),
             clip_horizontal_height=int(os.getenv("CLIP_HORIZONTAL_HEIGHT", "1080")),
-            smart_reframing_enabled=os.getenv("SMART_REFRAMING_ENABLED", "false").lower()
+            smart_reframing_enabled=os.getenv(
+                "AI_SMART_CROP", os.getenv("SMART_REFRAMING_ENABLED", "false")
+            ).lower()
             == "true",
             vision_provider=cast(
                 Literal["deterministic", "mediapipe"],
@@ -185,4 +193,12 @@ class WorkerSettings(BaseModel):
             ),
             vision_max_frames=int(os.getenv("VISION_MAX_FRAMES", "180")),
             vision_face_confidence=float(os.getenv("VISION_FACE_CONFIDENCE", "0.5")),
+            multimodal_analysis_enabled=os.getenv("MULTIMODAL_ANALYSIS", "false").lower()
+            == "true",
+            multimodal_analysis_provider=cast(
+                Literal["deterministic", "transcript-fallback"],
+                os.getenv("MULTIMODAL_ANALYSIS_PROVIDER", "deterministic"),
+            ),
+            face_tracking_enabled=os.getenv("FACE_TRACKING", "false").lower() == "true",
+            auto_zoom_enabled=os.getenv("AUTO_ZOOM", "false").lower() == "true",
         )

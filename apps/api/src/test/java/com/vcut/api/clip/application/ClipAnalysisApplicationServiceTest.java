@@ -85,6 +85,7 @@ class ClipAnalysisApplicationServiceTest {
     assertThat(payload.get("operation").asText()).isEqualTo("CLIP_ANALYSIS");
     assertThat(payload.get("data").get("durationPreference").asText()).isEqualTo("CUSTOM");
     assertThat(payload.get("data").get("durationSeconds").asInt()).isEqualTo(10);
+    assertThat(payload.get("data").get("objectKey").asText()).isEqualTo(readyVideo().objectKey());
     assertThat(payload.get("data").get("segments")).hasSize(1);
     assertThat(payload.get("data").get("segments").get(0).get("startSeconds").asInt()).isZero();
   }

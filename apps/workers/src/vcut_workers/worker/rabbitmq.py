@@ -12,7 +12,7 @@ from pydantic import BaseModel, ValidationError
 from vcut_workers.application.clip_analysis import GenerateClipCandidatesUseCase
 from vcut_workers.application.clip_generation import ClipGenerationLimits, GenerateClipUseCase
 from vcut_workers.application.final_render import FinalRenderUseCase
-from vcut_workers.application.ports import SmartCropAnalyzer
+from vcut_workers.application.ports import MultimodalAnalyzer, SmartCropAnalyzer
 from vcut_workers.application.smart_reframing import SmartReframingAnalyzer
 from vcut_workers.application.transcription import TranscribeAudioUseCase, TranscriptionCommand
 from vcut_workers.application.video_validation import ValidateUploadedVideoUseCase
@@ -33,6 +33,11 @@ from vcut_workers.domain.transcription import TranscriptionResult
 from vcut_workers.infrastructure.analysis.deterministic import (
     DeterministicContentAnalyzer,
     FallbackContentAnalyzer,
+)
+from vcut_workers.infrastructure.analysis.multimodal import (
+    DeterministicMultimodalAnalyzer,
+    ResilientMultimodalAnalyzer,
+    TranscriptFallbackMultimodalAnalyzer,
 )
 from vcut_workers.infrastructure.ffmpeg.processor import (
     FFmpegExecutionLimits,
@@ -411,7 +416,13 @@ def create_clip_analysis_worker(
         if settings.content_analysis_provider == "deterministic"
         else FallbackContentAnalyzer()
     )
-    use_case = GenerateClipCandidatesUseCase(analyzer)
+    object_storage = S3ObjectStorage(settings) if settings.multimodal_analysis_enabled else None
+    multimodal_analyzer = _multimodal_analyzer_for(settings)
+    use_case = GenerateClipCandidatesUseCase(
+        analyzer,
+        multimodal_analyzer=multimodal_analyzer,
+        object_storage=object_storage,
+    )
     return RabbitMqWorker(
         settings,
         AnalyzeClipsCommand,
@@ -512,7 +523,7 @@ def _smart_reframing_for(settings: WorkerSettings) -> SmartCropAnalyzer | None:
         return None
     face_detector = (
         MediaPipeFaceDetector(min_detection_confidence=settings.vision_face_confidence)
-        if settings.vision_provider == "mediapipe"
+        if settings.face_tracking_enabled and settings.vision_provider == "mediapipe"
         else DeterministicFaceDetector()
     )
     return SmartReframingAnalyzer(
@@ -526,6 +537,21 @@ def _smart_reframing_for(settings: WorkerSettings) -> SmartCropAnalyzer | None:
         max_frames=settings.vision_max_frames,
         scene_store=PostgresSceneIntervalStore(settings),
     )
+
+
+def _multimodal_analyzer_for(settings: WorkerSettings) -> MultimodalAnalyzer | None:
+    if not settings.multimodal_analysis_enabled:
+        return None
+    if settings.multimodal_analysis_provider == "transcript-fallback":
+        return TranscriptFallbackMultimodalAnalyzer()
+    primary = DeterministicMultimodalAnalyzer(
+        FFmpegSceneDetector(
+            settings.ffmpeg_binary,
+            threshold=settings.vision_scene_threshold,
+            timeout_seconds=settings.ffmpeg_timeout_seconds,
+        )
+    )
+    return ResilientMultimodalAnalyzer(primary, TranscriptFallbackMultimodalAnalyzer())
 
 
 def _result_envelope(

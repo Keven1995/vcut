@@ -12,6 +12,7 @@ from vcut_workers.domain.media import (
     VideoMetadata,
     VisionSignal,
 )
+from vcut_workers.domain.multimodal import MultimodalAnalysis
 from vcut_workers.domain.transcription import TranscriptionResult
 from vcut_workers.domain.vision import SceneInterval
 
@@ -153,3 +154,13 @@ class ContentAnalyzer(Protocol):
         segments: tuple[SemanticSegment, ...],
     ) -> AnalysisProviderResponse:
         """Return untrusted semantic analysis output for boundary validation."""
+
+
+class MultimodalAnalyzer(Protocol):
+    def analyze(
+        self,
+        command: AnalyzeClipsCommand,
+        segments: tuple[SemanticSegment, ...],
+        source: Path,
+    ) -> MultimodalAnalysis:
+        """Return validated transcript and basic visual-context findings."""

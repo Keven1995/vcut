@@ -40,6 +40,31 @@ def test_clip_generation_defaults_match_api_messaging_contract() -> None:
     assert (settings.clip_horizontal_width, settings.clip_horizontal_height) == (1920, 1080)
 
 
+def test_experimental_vision_and_multimodal_flags_are_disabled_by_default() -> None:
+    settings = WorkerSettings()
+
+    assert settings.smart_reframing_enabled is False
+    assert settings.face_tracking_enabled is False
+    assert settings.multimodal_analysis_enabled is False
+    assert settings.auto_zoom_enabled is False
+
+
+def test_experimental_flags_can_be_enabled_per_worker_environment(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("AI_SMART_CROP", "true")
+    monkeypatch.setenv("FACE_TRACKING", "true")
+    monkeypatch.setenv("MULTIMODAL_ANALYSIS", "true")
+    monkeypatch.setenv("AUTO_ZOOM", "true")
+
+    settings = WorkerSettings.from_environment()
+
+    assert settings.smart_reframing_enabled is True
+    assert settings.face_tracking_enabled is True
+    assert settings.multimodal_analysis_enabled is True
+    assert settings.auto_zoom_enabled is True
+
+
 def test_live_endpoint_does_not_require_dependencies() -> None:
     response = TestClient(worker_app.app).get("/health/live")
 

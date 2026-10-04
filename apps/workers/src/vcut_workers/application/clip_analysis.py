@@ -1,12 +1,17 @@
+import logging
 from collections.abc import Sequence
+from pathlib import Path
+from tempfile import TemporaryDirectory
 
-from vcut_workers.application.ports import ContentAnalyzer
+from vcut_workers.application.ports import ContentAnalyzer, MultimodalAnalyzer, ObjectStorage
 from vcut_workers.contracts.clip_analysis import (
     AnalysisTranscriptSegment,
     AnalyzeClipsCommand,
     AnalyzeClipsResult,
 )
 from vcut_workers.domain.clip_analysis import AnalysisProviderResponse, SemanticSegment
+
+LOGGER = logging.getLogger(__name__)
 
 
 def segment_transcription(
@@ -48,11 +53,35 @@ def segment_transcription(
 class GenerateClipCandidatesUseCase:
     """Segment a transcript and validate every analyzer response before publication."""
 
-    def __init__(self, analyzer: ContentAnalyzer) -> None:
+    def __init__(
+        self,
+        analyzer: ContentAnalyzer,
+        *,
+        multimodal_analyzer: MultimodalAnalyzer | None = None,
+        object_storage: ObjectStorage | None = None,
+    ) -> None:
         self._analyzer = analyzer
+        self._multimodal_analyzer = multimodal_analyzer
+        self._object_storage = object_storage
 
     def execute(self, command: AnalyzeClipsCommand) -> AnalyzeClipsResult:
         semantic_segments = segment_transcription(command.segments)
+        if (
+            self._multimodal_analyzer is not None
+            and self._object_storage is not None
+            and command.object_key is not None
+        ):
+            try:
+                with TemporaryDirectory(prefix="vcut-multimodal-analysis-") as directory:
+                    source = Path(directory) / "source-video"
+                    self._object_storage.download(command.object_key, source)
+                    analysis = self._multimodal_analyzer.analyze(
+                        command, tuple(semantic_segments), source
+                    )
+                    command = command.model_copy(update={"multimodal_context": analysis.findings})
+            except Exception as error:
+                # Multimodal context is supplemental; transcript analysis remains available.
+                LOGGER.warning("multimodal_analysis_fallback error=%s", type(error).__name__)
         raw_response = self._analyzer.analyze(
             command,
             tuple(semantic_segments),
