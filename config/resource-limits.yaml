@@ -2,7 +2,7 @@ version: 1
 status: provisional
 
 upload:
-  maxFileSizeBytes: 536870912
+  maxFileSizeBytes: 2147483648
   maxDurationSeconds: 7200
   acceptedVideoContainers:
     - mp4
@@ -14,17 +14,57 @@ upload:
     - m4a
 
 retention:
-  originalMediaDays: 30
-  derivedMediaDays: 30
-  failedJobArtifactsDays: 7
+  normalizedUsesOriginalMediaDays: true
 
 quotas:
   free:
     monthlyProcessingMinutes: 60
     concurrentJobs: 1
+    maxFileSizeBytes: 536870912
+    maxDurationSeconds: 7200
+    maxStorageBytes: 5368709120
+    maxWidth: 1920
+    maxHeight: 1920
+    retentionDays:
+      original: 30
+      audio: 7
+      frames: 3
+      preview: 7
+      final: 30
+      thumbnail: 30
+      failedJobArtifact: 7
   pro:
     monthlyProcessingMinutes: 600
     concurrentJobs: 3
+    maxFileSizeBytes: 2147483648
+    maxDurationSeconds: 7200
+    maxStorageBytes: 53687091200
+    maxWidth: 3840
+    maxHeight: 3840
+    retentionDays:
+      original: 90
+      audio: 30
+      frames: 14
+      preview: 30
+      final: 90
+      thumbnail: 90
+      failedJobArtifact: 14
+
+usageCostRates:
+  currency: USD
+  transcriptionPerMinute: 0
+  multimodalPerMinute: 0
+  llmPerThousandTokens: 0
+  cpuPerSecond: 0
+  gpuPerSecond: 0
+  storagePerGiBMonth: 0
+  bandwidthPerGiB: 0
+
+retentionCleanup:
+  enabled: false
+  dryRun: true
+  intervalSeconds: 3600
+  batchSize: 100
 
 processing:
   maxClipDurationSeconds: 90
@@ -42,7 +82,7 @@ vision:
 externalImport:
   enabled: false
   fixtureAdapterEnabled: false
-  maxFileSizeBytes: 536870912
+  maxFileSizeBytes: 2147483648
   maxDurationSeconds: 7200
   timeoutSeconds: 300
   maxAttempts: 3

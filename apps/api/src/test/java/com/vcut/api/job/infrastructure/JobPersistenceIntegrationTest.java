@@ -2,14 +2,33 @@ package com.vcut.api.job.infrastructure;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.vcut.api.shared.errors.QuotaExceededException;
+import com.vcut.api.usage.application.PlanLimits;
+import com.vcut.api.usage.application.PlanLimitsProvider;
+import com.vcut.api.usage.application.UsageApplicationService;
+import com.vcut.api.usage.domain.RetentionPolicy;
+import com.vcut.api.usage.domain.UsageCostRates;
+import com.vcut.api.usage.domain.UsageMetrics;
+import com.vcut.api.usage.infrastructure.JdbcSubscriptionRepository;
+import com.vcut.api.usage.infrastructure.JdbcUsageRepository;
+import java.math.BigDecimal;
 import java.sql.Timestamp;
+import java.time.Instant;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.wait.strategy.Wait;
 import org.testcontainers.junit.jupiter.Container;
@@ -28,6 +47,7 @@ class JobPersistenceIntegrationTest {
           .waitingFor(Wait.forListeningPort());
 
   private static JdbcTemplate jdbc;
+  private static DriverManagerDataSource dataSource;
 
   @BeforeAll
   static void migrate() {
@@ -36,7 +56,7 @@ class JobPersistenceIntegrationTest {
         .locations("classpath:db/migration")
         .load()
         .migrate();
-    DriverManagerDataSource dataSource = new DriverManagerDataSource(jdbcUrl());
+    dataSource = new DriverManagerDataSource(jdbcUrl());
     dataSource.setUsername("test");
     dataSource.setPassword("test");
     jdbc = new JdbcTemplate(dataSource);
@@ -138,5 +158,179 @@ class JobPersistenceIntegrationTest {
     assertThat(row.get("stage_status")).isEqualTo("QUEUED");
     assertThat(row.get("pipeline_version")).isEqualTo(1);
     assertThat(row.get("published_at")).isNull();
+  }
+
+  @Test
+  void concurrentQuotaReservationsCannotExceedTheMonthlyLimit() throws Exception {
+    UUID userId = UUID.randomUUID();
+    Timestamp now = Timestamp.from(Instant.parse("2026-10-03T12:00:00Z"));
+    jdbc.update(
+        "INSERT INTO users (id, email, normalized_email, password_hash, status, created_at, updated_at) "
+            + "VALUES (?, ?, ?, ?, 'ACTIVE', ?, ?)",
+        userId,
+        userId + "@usage.example.test",
+        userId + "@usage.example.test",
+        "test-hash",
+        now,
+        now);
+    PlanLimitsProvider limits =
+        planCode ->
+            new PlanLimits(
+                BigDecimal.valueOf(60),
+                100_000_000,
+                7_200,
+                1_000_000_000,
+                3,
+                1920,
+                1080,
+                new RetentionPolicy(30, 7, 3, 7, 30, 30, 7));
+    UsageApplicationService usage =
+        new UsageApplicationService(
+            new JdbcUsageRepository(jdbc),
+            new JdbcSubscriptionRepository(jdbc),
+            limits,
+            new UsageCostRates(
+                BigDecimal.ZERO,
+                BigDecimal.ZERO,
+                BigDecimal.ZERO,
+                BigDecimal.ZERO,
+                BigDecimal.ZERO,
+                BigDecimal.ZERO,
+                BigDecimal.ZERO));
+    TransactionTemplate transaction =
+        new TransactionTemplate(new DataSourceTransactionManager(dataSource));
+    CountDownLatch start = new CountDownLatch(1);
+    AtomicInteger succeeded = new AtomicInteger();
+    AtomicInteger rejected = new AtomicInteger();
+    AtomicReference<UUID> winningResourceId = new AtomicReference<>();
+    UUID firstResourceId = UUID.randomUUID();
+    UUID secondResourceId = UUID.randomUUID();
+    var executor = Executors.newFixedThreadPool(2);
+    try {
+      var first =
+          executor.submit(
+              () -> {
+                reserveAfterBarrier(transaction, start, usage, userId, firstResourceId);
+                return firstResourceId;
+              });
+      var second =
+          executor.submit(
+              () -> {
+                reserveAfterBarrier(transaction, start, usage, userId, secondResourceId);
+                return secondResourceId;
+              });
+      start.countDown();
+      for (var future : List.of(first, second)) {
+        try {
+          winningResourceId.set(future.get(10, TimeUnit.SECONDS));
+          succeeded.incrementAndGet();
+        } catch (java.util.concurrent.ExecutionException exception) {
+          if (exception.getCause() instanceof QuotaExceededException) {
+            rejected.incrementAndGet();
+          } else {
+            throw exception;
+          }
+        }
+      }
+    } finally {
+      executor.shutdownNow();
+    }
+
+    assertThat(succeeded.get()).isEqualTo(1);
+    assertThat(rejected.get()).isEqualTo(1);
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT reserved_minutes FROM usage_periods WHERE user_id = ?",
+                BigDecimal.class,
+                userId))
+        .isEqualByComparingTo("40");
+    transaction.executeWithoutResult(
+        ignored ->
+            usage.confirmProcessing(
+                userId, winningResourceId.get(), "TRANSCRIPTION", 1, BigDecimal.valueOf(40 * 60L)));
+    transaction.executeWithoutResult(
+        ignored ->
+            usage.confirmProcessing(
+                userId, winningResourceId.get(), "TRANSCRIPTION", 1, BigDecimal.valueOf(40 * 60L)));
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT processed_minutes FROM usage_periods WHERE user_id = ?",
+                BigDecimal.class,
+                userId))
+        .isEqualByComparingTo("40");
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT COUNT(*) FROM usage_ledger_entries WHERE user_id = ? AND outcome = 'SUCCEEDED'",
+                Integer.class,
+                userId))
+        .isEqualTo(1);
+    transaction.executeWithoutResult(
+        ignored -> {
+          var metrics =
+              new UsageMetrics(
+                  BigDecimal.ZERO,
+                  BigDecimal.valueOf(0.5),
+                  500,
+                  BigDecimal.valueOf(2),
+                  BigDecimal.valueOf(0.25),
+                  100,
+                  1_024,
+                  1);
+          usage.recordMetrics(
+              userId, winningResourceId.get(), "CLIP_ANALYSIS", 1, metrics, "SUCCEEDED");
+          usage.recordMetrics(
+              userId, winningResourceId.get(), "CLIP_ANALYSIS", 1, metrics, "SUCCEEDED");
+        });
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT multimodal_minutes FROM usage_periods WHERE user_id = ?",
+                BigDecimal.class,
+                userId))
+        .isEqualByComparingTo("0.5");
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT llm_tokens FROM usage_periods WHERE user_id = ?", Long.class, userId))
+        .isEqualTo(500L);
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT COUNT(*) FROM usage_ledger_entries WHERE user_id = ? AND operation = 'CLIP_ANALYSIS'",
+                Integer.class,
+                userId))
+        .isEqualTo(1);
+
+    UUID failedResourceId = UUID.randomUUID();
+    transaction.executeWithoutResult(
+        ignored ->
+            usage.reserveProcessingMinutes(
+                userId, failedResourceId, "TRANSCRIPTION", 2, BigDecimal.valueOf(10 * 60L)));
+    transaction.executeWithoutResult(
+        ignored ->
+            usage.releaseProcessingReservation(userId, failedResourceId, "TRANSCRIPTION", 2));
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT reserved_minutes FROM usage_periods WHERE user_id = ?",
+                BigDecimal.class,
+                userId))
+        .isEqualByComparingTo("0");
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT COUNT(*) FROM usage_ledger_entries WHERE user_id = ? AND outcome = 'RELEASED'",
+                Integer.class,
+                userId))
+        .isEqualTo(1);
+  }
+
+  private static void reserveAfterBarrier(
+      TransactionTemplate transaction,
+      CountDownLatch start,
+      UsageApplicationService usage,
+      UUID userId,
+      UUID videoId)
+      throws InterruptedException {
+    start.await();
+    transaction.executeWithoutResult(
+        ignored ->
+            usage.reserveProcessingMinutes(
+                userId, videoId, "TRANSCRIPTION", 1, BigDecimal.valueOf(40 * 60L)));
   }
 }
