@@ -1,11 +1,13 @@
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
+from prometheus_client import make_asgi_app
 
 from vcut_workers.config import WorkerSettings
 from vcut_workers.dependencies import check_dependencies
 
 settings = WorkerSettings.from_environment()
 app = FastAPI(title="Vcut workers", version="0.1.0")
+app.mount("/metrics", make_asgi_app())
 
 
 @app.get("/health/live")

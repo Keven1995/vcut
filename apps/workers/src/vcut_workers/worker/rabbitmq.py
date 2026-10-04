@@ -44,6 +44,7 @@ from vcut_workers.infrastructure.ffmpeg.processor import (
     FFmpegVideoProcessor,
 )
 from vcut_workers.infrastructure.persistence.idempotency import PostgresIdempotencyStore
+from vcut_workers.infrastructure.persistence.job_eligibility import PostgresJobEligibilityStore
 from vcut_workers.infrastructure.persistence.retention import PostgresRetentionStore
 from vcut_workers.infrastructure.persistence.transcription import (
     ObjectStorageTranscriptionResultStore,
@@ -55,6 +56,7 @@ from vcut_workers.infrastructure.transcription.whisper import WhisperTranscripti
 from vcut_workers.infrastructure.vision.deterministic import DeterministicFaceDetector
 from vcut_workers.infrastructure.vision.mediapipe import MediaPipeFaceDetector
 from vcut_workers.infrastructure.vision.scene import FFmpegSceneDetector
+from vcut_workers.observability_tracing import current_traceparent
 from vcut_workers.worker.consumer import (
     ConsumerBase,
     MessageDelivery,
@@ -63,6 +65,10 @@ from vcut_workers.worker.consumer import (
     RetryPublisher,
 )
 from vcut_workers.worker.errors import ProcessingErrorInfo
+from vcut_workers.worker.metrics import (
+    WORKER_IN_PROGRESS,
+    record_worker_delivery,
+)
 from vcut_workers.worker.retry import RetryPolicy
 
 LOGGER = logging.getLogger(__name__)
@@ -334,6 +340,8 @@ class RabbitMqWorker(Generic[CommandModelT, ResultModelT]):
             result_publisher=publisher,
             stage_run_updater=publisher,
             progress_handler=self._progress_handler,
+            eligibility_store=PostgresJobEligibilityStore(self._settings),
+            queue_name=self._command_queue,
         )
 
         def on_message(
@@ -344,14 +352,28 @@ class RabbitMqWorker(Generic[CommandModelT, ResultModelT]):
         ) -> None:
             del properties
             delivery = PikaDelivery(current_channel, body, method.delivery_tag)
+            started_at = time.perf_counter()
+            WORKER_IN_PROGRESS.labels(queue=self._command_queue).inc()
             try:
-                asyncio.run(consumer.consume(delivery))
+                outcome = asyncio.run(consumer.consume(delivery))
+                record_worker_delivery(
+                    self._command_queue,
+                    outcome.status.value,
+                    time.perf_counter() - started_at,
+                )
             except Exception as exception:
+                record_worker_delivery(
+                    self._command_queue,
+                    "DELIVERY_ERROR",
+                    time.perf_counter() - started_at,
+                )
                 LOGGER.exception("worker_delivery_failed error=%s", exception)
                 try:
                     current_channel.basic_nack(delivery_tag=method.delivery_tag, requeue=True)
                 except pika.exceptions.AMQPError:
                     LOGGER.exception("worker_delivery_requeue_failed")
+            finally:
+                WORKER_IN_PROGRESS.labels(queue=self._command_queue).dec()
 
         channel.basic_consume(
             queue=self._command_queue,
@@ -586,6 +608,7 @@ def _result_envelope(
             "operation": envelope.operation,
             "version": envelope.version,
             "correlationId": envelope.correlation_id,
+            "traceparent": current_traceparent() or envelope.traceparent,
             "attempt": envelope.attempt,
             "occurredAt": datetime.now(UTC),
             "data": data,
@@ -606,6 +629,7 @@ def _stage_update_envelope(update: StageRunUpdate, data: dict[str, object]) -> b
             "operation": update.operation,
             "version": update.version,
             "correlationId": update.correlation_id,
+            "traceparent": current_traceparent(),
             "attempt": update.attempt,
             "occurredAt": datetime.now(UTC),
             "data": data,
