@@ -1,5 +1,8 @@
 package com.vcut.api.job.infrastructure;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.vcut.api.job.application.OutboxRepository;
 import com.vcut.api.job.domain.OutboxMessage;
 import java.nio.charset.StandardCharsets;
@@ -12,6 +15,8 @@ import org.springframework.amqp.core.MessageDeliveryMode;
 import org.springframework.amqp.core.MessageProperties;
 import org.springframework.amqp.rabbit.connection.CorrelationData;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
@@ -24,10 +29,23 @@ public class OutboxPublisher {
 
   private final OutboxRepository outboxRepository;
   private final RabbitTemplate rabbitTemplate;
+  private final ObjectMapper objectMapper;
+  private final int maxPriority;
 
   public OutboxPublisher(OutboxRepository outboxRepository, RabbitTemplate rabbitTemplate) {
+    this(outboxRepository, rabbitTemplate, new ObjectMapper(), 10);
+  }
+
+  @Autowired
+  public OutboxPublisher(
+      OutboxRepository outboxRepository,
+      RabbitTemplate rabbitTemplate,
+      ObjectMapper objectMapper,
+      @Value("${vcut.messaging.max-priority:10}") int maxPriority) {
     this.outboxRepository = outboxRepository;
     this.rabbitTemplate = rabbitTemplate;
+    this.objectMapper = objectMapper;
+    this.maxPriority = maxPriority;
   }
 
   @Scheduled(fixedDelayString = "${vcut.messaging.publisher-delay-ms:1000}")
@@ -44,6 +62,7 @@ public class OutboxPublisher {
       MessageProperties properties = new MessageProperties();
       properties.setContentType(MessageProperties.CONTENT_TYPE_JSON);
       properties.setDeliveryMode(MessageDeliveryMode.PERSISTENT);
+      properties.setPriority(priority(message.payload()));
       CorrelationData correlation = new CorrelationData(message.id().toString());
       rabbitTemplate.send(
           JobMessagingConfiguration.COMMAND_EXCHANGE,
@@ -60,6 +79,19 @@ public class OutboxPublisher {
           message.id(), attempt, now.plusSeconds(backoffSeconds(attempt)), safeMessage(exception));
       LOGGER.warn(
           "outbox_publish_failed messageId={} attempt={}", message.id(), attempt, exception);
+    }
+  }
+
+  private int priority(String payload) {
+    try {
+      JsonNode value = objectMapper.readTree(payload).path("data").path("workerPriority");
+      if (!value.isIntegralNumber() || !value.canConvertToInt()) {
+        return 0;
+      }
+      int priority = value.intValue();
+      return priority < 0 || priority > maxPriority ? 0 : priority;
+    } catch (JsonProcessingException exception) {
+      return 0;
     }
   }
 

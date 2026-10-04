@@ -14,6 +14,7 @@ class ValidateVideoCommand(BaseModel):
         str, Field(alias="declaredContentType", min_length=1, max_length=127)
     ]
     declared_size_bytes: Annotated[int, Field(alias="declaredSizeBytes", gt=0)]
+    worker_priority: Annotated[int, Field(alias="workerPriority", ge=0, le=10)] = 0
 
 
 class VideoValidationResult(BaseModel):

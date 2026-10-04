@@ -56,6 +56,13 @@ class AnalyzeClipsCommand(BaseModel):
         serialization_alias="durationSeconds",
         ge=0,
     )
+    worker_priority: int = Field(
+        default=0,
+        validation_alias=AliasChoices("worker_priority", "workerPriority"),
+        serialization_alias="workerPriority",
+        ge=0,
+        le=10,
+    )
     language: LanguageCode
     text: str = Field(max_length=1_000_000)
     segments: tuple[AnalysisTranscriptSegment, ...] = Field(min_length=0)

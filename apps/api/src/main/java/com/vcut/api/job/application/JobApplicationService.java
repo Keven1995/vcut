@@ -150,7 +150,8 @@ public class JobApplicationService {
             "objectKey", video.objectKey(),
             "originalFilename", video.originalFilename(),
             "declaredContentType", video.declaredContentType(),
-            "declaredSizeBytes", video.declaredSizeBytes());
+            "declaredSizeBytes", video.declaredSizeBytes(),
+            "workerPriority", workerPriority(userId));
     MessageEnvelope command =
         new MessageEnvelope(
             MessageKind.COMMAND,
@@ -311,6 +312,12 @@ public class JobApplicationService {
     return videoRepository
         .findByIdForUser(videoId, userId)
         .orElseThrow(() -> new ResourceNotFoundException("Video not found."));
+  }
+
+  private int workerPriority(UUID userId) {
+    return usageApplicationService == null
+        ? 0
+        : usageApplicationService.workerPriorityForUser(userId);
   }
 
   private String serialize(Object value) {

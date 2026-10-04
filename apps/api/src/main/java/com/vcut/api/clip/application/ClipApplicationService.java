@@ -508,6 +508,11 @@ public class ClipApplicationService {
     data.put("captionPreset", version.captionPreset().name());
     data.put("captionStyle", styleData(version.captionStyle()));
     data.put("captionCues", cueData(version.captionCues()));
+    data.put(
+        "workerPriority",
+        usageApplicationService == null
+            ? 0
+            : usageApplicationService.workerPriorityForUser(clip.userId()));
     return data;
   }
 

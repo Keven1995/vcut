@@ -57,6 +57,7 @@ class WorkerSettings(BaseModel):
     rabbitmq_username: str = Field(default="vcut", min_length=1)
     rabbitmq_password: str = Field(default="", min_length=0)
     rabbitmq_virtual_host: str = Field(default="/", min_length=1)
+    rabbitmq_max_priority: int = Field(default=10, ge=1, le=10)
     rabbitmq_command_queue: str = Field(
         default="vcut.pipeline.commands.video-validation", min_length=1
     )
@@ -154,6 +155,7 @@ class WorkerSettings(BaseModel):
             rabbitmq_username=os.getenv("RABBITMQ_USER", "vcut"),
             rabbitmq_password=os.getenv("RABBITMQ_PASSWORD", ""),
             rabbitmq_virtual_host=os.getenv("RABBITMQ_VHOST", "/"),
+            rabbitmq_max_priority=int(os.getenv("RABBITMQ_MAX_PRIORITY", "10")),
             rabbitmq_transcription_queue=os.getenv(
                 "RABBITMQ_TRANSCRIPTION_QUEUE", "vcut.pipeline.commands.transcription"
             ),

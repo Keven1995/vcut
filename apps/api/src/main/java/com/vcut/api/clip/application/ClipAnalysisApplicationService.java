@@ -239,6 +239,11 @@ public class ClipAnalysisApplicationService {
     commandData.put("segments", segments(transcription.segments()));
     commandData.put("durationPreference", preference.name());
     commandData.put("customDurationSeconds", customDuration);
+    commandData.put(
+        "workerPriority",
+        usageApplicationService == null
+            ? 0
+            : usageApplicationService.workerPriorityForUser(userId));
     MessageEnvelope command =
         new MessageEnvelope(
             MessageKind.COMMAND,

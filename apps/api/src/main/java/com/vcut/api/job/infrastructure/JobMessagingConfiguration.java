@@ -11,6 +11,7 @@ import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.amqp.rabbit.listener.RabbitListenerContainerFactory;
 import org.springframework.amqp.support.converter.Jackson2JsonMessageConverter;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -79,87 +80,97 @@ public class JobMessagingConfiguration {
   }
 
   @Bean
-  Queue commandQueue() {
+  Queue commandQueue(@Value("${vcut.messaging.max-priority:10}") int maxPriority) {
     return QueueBuilder.durable(COMMAND_QUEUE)
         .deadLetterExchange(DEAD_LETTER_EXCHANGE)
         .deadLetterRoutingKey(COMMAND_ROUTING_KEY)
+        .maxPriority(validateMaxPriority(maxPriority))
         .build();
   }
 
   @Bean
-  Queue transcriptionCommandQueue() {
+  Queue transcriptionCommandQueue(@Value("${vcut.messaging.max-priority:10}") int maxPriority) {
     return QueueBuilder.durable(TRANSCRIPTION_COMMAND_QUEUE)
         .deadLetterExchange(DEAD_LETTER_EXCHANGE)
         .deadLetterRoutingKey(TRANSCRIPTION_COMMAND_ROUTING_KEY)
+        .maxPriority(validateMaxPriority(maxPriority))
         .build();
   }
 
   @Bean
-  Queue clipAnalysisCommandQueue() {
+  Queue clipAnalysisCommandQueue(@Value("${vcut.messaging.max-priority:10}") int maxPriority) {
     return QueueBuilder.durable(CLIP_ANALYSIS_COMMAND_QUEUE)
         .deadLetterExchange(DEAD_LETTER_EXCHANGE)
         .deadLetterRoutingKey(CLIP_ANALYSIS_COMMAND_ROUTING_KEY)
+        .maxPriority(validateMaxPriority(maxPriority))
         .build();
   }
 
   @Bean
-  Queue clipGenerationCommandQueue() {
+  Queue clipGenerationCommandQueue(@Value("${vcut.messaging.max-priority:10}") int maxPriority) {
     return QueueBuilder.durable(CLIP_GENERATION_COMMAND_QUEUE)
         .deadLetterExchange(DEAD_LETTER_EXCHANGE)
         .deadLetterRoutingKey(CLIP_GENERATION_COMMAND_ROUTING_KEY)
+        .maxPriority(validateMaxPriority(maxPriority))
         .build();
   }
 
   @Bean
-  Queue finalRenderCommandQueue() {
+  Queue finalRenderCommandQueue(@Value("${vcut.messaging.max-priority:10}") int maxPriority) {
     return QueueBuilder.durable(FINAL_RENDER_COMMAND_QUEUE)
         .deadLetterExchange(DEAD_LETTER_EXCHANGE)
         .deadLetterRoutingKey(FINAL_RENDER_COMMAND_ROUTING_KEY)
+        .maxPriority(validateMaxPriority(maxPriority))
         .build();
   }
 
   @Bean
-  Queue retryQueue() {
+  Queue retryQueue(@Value("${vcut.messaging.max-priority:10}") int maxPriority) {
     return QueueBuilder.durable(RETRY_QUEUE)
         .ttl(300_000)
         .deadLetterExchange(COMMAND_EXCHANGE)
         .deadLetterRoutingKey(COMMAND_ROUTING_KEY)
+        .maxPriority(validateMaxPriority(maxPriority))
         .build();
   }
 
   @Bean
-  Queue transcriptionRetryQueue() {
+  Queue transcriptionRetryQueue(@Value("${vcut.messaging.max-priority:10}") int maxPriority) {
     return QueueBuilder.durable(TRANSCRIPTION_RETRY_QUEUE)
         .ttl(300_000)
         .deadLetterExchange(COMMAND_EXCHANGE)
         .deadLetterRoutingKey(TRANSCRIPTION_COMMAND_ROUTING_KEY)
+        .maxPriority(validateMaxPriority(maxPriority))
         .build();
   }
 
   @Bean
-  Queue clipAnalysisRetryQueue() {
+  Queue clipAnalysisRetryQueue(@Value("${vcut.messaging.max-priority:10}") int maxPriority) {
     return QueueBuilder.durable(CLIP_ANALYSIS_RETRY_QUEUE)
         .ttl(300_000)
         .deadLetterExchange(COMMAND_EXCHANGE)
         .deadLetterRoutingKey(CLIP_ANALYSIS_COMMAND_ROUTING_KEY)
+        .maxPriority(validateMaxPriority(maxPriority))
         .build();
   }
 
   @Bean
-  Queue clipGenerationRetryQueue() {
+  Queue clipGenerationRetryQueue(@Value("${vcut.messaging.max-priority:10}") int maxPriority) {
     return QueueBuilder.durable(CLIP_GENERATION_RETRY_QUEUE)
         .ttl(300_000)
         .deadLetterExchange(COMMAND_EXCHANGE)
         .deadLetterRoutingKey(CLIP_GENERATION_COMMAND_ROUTING_KEY)
+        .maxPriority(validateMaxPriority(maxPriority))
         .build();
   }
 
   @Bean
-  Queue finalRenderRetryQueue() {
+  Queue finalRenderRetryQueue(@Value("${vcut.messaging.max-priority:10}") int maxPriority) {
     return QueueBuilder.durable(FINAL_RENDER_RETRY_QUEUE)
         .ttl(300_000)
         .deadLetterExchange(COMMAND_EXCHANGE)
         .deadLetterRoutingKey(FINAL_RENDER_COMMAND_ROUTING_KEY)
+        .maxPriority(validateMaxPriority(maxPriority))
         .build();
   }
 
@@ -431,5 +442,12 @@ public class JobMessagingConfiguration {
     factory.setAcknowledgeMode(org.springframework.amqp.core.AcknowledgeMode.MANUAL);
     factory.setDefaultRequeueRejected(false);
     return factory;
+  }
+
+  private static int validateMaxPriority(int maxPriority) {
+    if (maxPriority < 1 || maxPriority > 10) {
+      throw new IllegalArgumentException("vcut.messaging.max-priority must be between 1 and 10");
+    }
+    return maxPriority;
   }
 }

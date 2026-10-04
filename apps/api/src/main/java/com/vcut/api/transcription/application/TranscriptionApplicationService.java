@@ -191,6 +191,7 @@ public class TranscriptionApplicationService {
                 "videoId", videoId,
                 "pipelineVersion", version,
                 "audioObjectKey", audioObjectKey(video, version),
+                "workerPriority", workerPriority(userId),
                 "language", language));
     String payload = serialize(command);
     transcriptionRepository.save(transcription);
@@ -307,6 +308,12 @@ public class TranscriptionApplicationService {
     return videoRepository
         .findByIdForUser(videoId, userId)
         .orElseThrow(() -> new ResourceNotFoundException("Video not found."));
+  }
+
+  private int workerPriority(UUID userId) {
+    return usageApplicationService == null
+        ? 0
+        : usageApplicationService.workerPriorityForUser(userId);
   }
 
   private String serialize(Object value) {

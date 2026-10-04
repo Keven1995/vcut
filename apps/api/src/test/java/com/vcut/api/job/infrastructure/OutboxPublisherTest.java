@@ -10,6 +10,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.vcut.api.job.application.OutboxRepository;
 import com.vcut.api.job.domain.OutboxMessage;
 import java.time.Instant;
@@ -17,6 +18,7 @@ import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.amqp.core.Message;
+import org.springframework.amqp.core.MessageProperties;
 import org.springframework.amqp.rabbit.connection.CorrelationData;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 
@@ -58,7 +60,36 @@ class OutboxPublisherTest {
         .markAttempt(eq(message.id()), eq(1), any(Instant.class), eq("broker unavailable"));
   }
 
+  @Test
+  void forwardsPlanWorkerPriorityToRabbitMessageProperties() {
+    OutboxMessage message = message("{\"data\":{\"workerPriority\":7},\"eventType\":\"Process\"}");
+    when(repository.findPending(anyInt(), any(Instant.class))).thenReturn(List.of(message));
+    doAnswer(
+            invocation -> {
+              CorrelationData correlation = invocation.getArgument(3);
+              correlation.getFuture().complete(new CorrelationData.Confirm(true, null));
+              return null;
+            })
+        .when(rabbitTemplate)
+        .send(anyString(), anyString(), any(Message.class), any(CorrelationData.class));
+    OutboxPublisher priorityPublisher =
+        new OutboxPublisher(repository, rabbitTemplate, new ObjectMapper(), 10);
+
+    priorityPublisher.publishPending();
+
+    org.mockito.ArgumentCaptor<Message> messageCaptor =
+        org.mockito.ArgumentCaptor.forClass(Message.class);
+    verify(rabbitTemplate)
+        .send(anyString(), anyString(), messageCaptor.capture(), any(CorrelationData.class));
+    MessageProperties properties = messageCaptor.getValue().getMessageProperties();
+    org.assertj.core.api.Assertions.assertThat(properties.getPriority()).isEqualTo(7);
+  }
+
   private static OutboxMessage message() {
+    return message("{}");
+  }
+
+  private static OutboxMessage message(String payload) {
     Instant now = Instant.parse("2026-09-30T12:00:00Z");
     return new OutboxMessage(
         UUID.randomUUID(),
@@ -66,7 +97,7 @@ class OutboxPublisherTest {
         UUID.randomUUID(),
         "VideoValidationRequested",
         "pipeline.video.validate",
-        "{}",
+        payload,
         0,
         now,
         null,

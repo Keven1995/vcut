@@ -76,6 +76,7 @@ def test_command_serializes_the_api_camel_case_contract() -> None:
         "videoId",
         "pipelineVersion",
         "editVersion",
+        "workerPriority",
         "sourceObjectKey",
         "outputObjectKey",
         "startSeconds",

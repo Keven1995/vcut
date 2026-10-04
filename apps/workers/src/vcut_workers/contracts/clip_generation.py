@@ -46,6 +46,7 @@ class ClipGenerationCommand(BaseModel):
     crop_settings: Annotated[CropSettings, Field(alias="cropSettings")] = Field(
         default_factory=CropSettings.centered
     )
+    worker_priority: Annotated[int, Field(alias="workerPriority", ge=0, le=10)] = 0
 
     @field_validator("source_object_key", "output_object_key")
     @classmethod

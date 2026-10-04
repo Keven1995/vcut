@@ -201,6 +201,7 @@ class ClipApplicationServiceTest {
     ClipAggregate aggregate = new ClipAggregate(clip, version);
     when(clipRepository.findByIdForUser(clip.id(), userId)).thenReturn(Optional.of(aggregate));
     when(clipRepository.claimGeneration(clip.id(), userId, 1, now)).thenReturn(true, false);
+    when(usageApplicationService.workerPriorityForUser(userId)).thenReturn(7);
 
     service.generate(userId, clip.id());
     service.generate(userId, clip.id());
@@ -214,6 +215,7 @@ class ClipApplicationServiceTest {
     assertThat(data.get("captionCues").get(0).get("sequence").asInt()).isZero();
     assertThat(data.get("captionStyle").get("fontFamily").asText())
         .isEqualTo(CaptionPreset.MINIMAL.defaultStyle().fontFamily());
+    assertThat(data.get("workerPriority").asInt()).isEqualTo(7);
   }
 
   @Test

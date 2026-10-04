@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 from typing import cast
 from uuid import UUID
 
+import pika
 import pytest
 from pydantic import BaseModel, ValidationError
 
@@ -119,7 +120,9 @@ def result() -> VideoValidationResult:
     )
 
 
-def body(attempt: int = 1) -> bytes:
+def body(attempt: int = 1, worker_priority: int = 0) -> bytes:
+    command_data = cast(dict[str, object], command().model_dump(mode="json", by_alias=True))
+    command_data["workerPriority"] = worker_priority
     envelope = MessageEnvelope(
         kind=MessageKind.COMMAND,
         eventId=UUID("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"),
@@ -132,7 +135,7 @@ def body(attempt: int = 1) -> bytes:
         correlationId=CORRELATION_ID,
         attempt=attempt,
         occurredAt=datetime(2026, 9, 29, tzinfo=UTC),
-        data=cast(dict[str, object], command().model_dump(mode="json")),
+        data=command_data,
     )
     return envelope.model_dump_json(by_alias=True).encode("utf-8")
 
@@ -191,6 +194,24 @@ def test_pika_dead_letter_does_not_parse_an_invalid_envelope_again() -> None:
     asyncio.run(publisher.publish_dead_letter(b'{"version": 2}', error))
 
     assert len(channel.published) == 1
+
+
+def test_pika_retry_preserves_the_subscription_worker_priority() -> None:
+    channel = FakeChannel()
+    publisher = PikaPublisher(channel, WorkerSettings(rabbitmq_password="test"))
+    metadata = RetryMetadata(
+        attempt=1,
+        max_attempts=3,
+        next_attempt=2,
+        backoff_seconds=5,
+        error_code="TEMPORARY",
+        error_message="try again",
+    )
+
+    asyncio.run(publisher.publish_retry(body(worker_priority=7), metadata))
+
+    properties = cast(pika.BasicProperties, channel.published[0]["properties"])
+    assert properties.priority == 7
 
 
 def test_pika_publishes_stage_updates_as_versioned_events() -> None:

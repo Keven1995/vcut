@@ -15,6 +15,7 @@ def test_settings_are_loaded_from_environment(monkeypatch: MonkeyPatch) -> None:
     monkeypatch.setenv("POSTGRES_DB", "vcut-test")
     monkeypatch.setenv("POSTGRES_USER", "worker-test")
     monkeypatch.setenv("POSTGRES_PASSWORD", "worker-secret")
+    monkeypatch.setenv("RABBITMQ_MAX_PRIORITY", "7")
 
     settings = WorkerSettings.from_environment()
 
@@ -27,6 +28,7 @@ def test_settings_are_loaded_from_environment(monkeypatch: MonkeyPatch) -> None:
     assert settings.postgres_database == "vcut-test"
     assert settings.postgres_username == "worker-test"
     assert settings.postgres_password == "worker-secret"
+    assert settings.rabbitmq_max_priority == 7
 
 
 def test_clip_generation_defaults_match_api_messaging_contract() -> None:
@@ -38,6 +40,7 @@ def test_clip_generation_defaults_match_api_messaging_contract() -> None:
     )
     assert (settings.clip_vertical_width, settings.clip_vertical_height) == (1080, 1920)
     assert (settings.clip_horizontal_width, settings.clip_horizontal_height) == (1920, 1080)
+    assert settings.rabbitmq_max_priority == 10
 
 
 def test_experimental_vision_and_multimodal_flags_are_disabled_by_default() -> None:

@@ -118,6 +118,7 @@ class PikaPublisher(RetryPublisher, ResultPublisher):
                 content_type="application/json",
                 delivery_mode=2,
                 expiration=str(max(1, int(metadata.backoff_seconds * 1000))),
+                priority=self._worker_priority(body),
             ),
         )
 
@@ -134,6 +135,7 @@ class PikaPublisher(RetryPublisher, ResultPublisher):
                     "x-error-message": error.message,
                     "x-error-classification": error.classification.value,
                 },
+                priority=self._worker_priority(body),
             ),
         )
         try:
@@ -242,6 +244,18 @@ class PikaPublisher(RetryPublisher, ResultPublisher):
             properties=pika.BasicProperties(content_type="application/json", delivery_mode=2),
         )
 
+    def _worker_priority(self, body: bytes) -> int:
+        try:
+            envelope = MessageEnvelope.model_validate_json(body)
+        except ValidationError:
+            return 0
+        priority = envelope.data.get("workerPriority", 0)
+        if isinstance(priority, bool) or not isinstance(priority, int):
+            return 0
+        if priority < 0 or priority > self._settings.rabbitmq_max_priority:
+            return 0
+        return priority
+
 
 class RabbitMqWorker(Generic[CommandModelT, ResultModelT]):
     def __init__(
@@ -298,6 +312,7 @@ class RabbitMqWorker(Generic[CommandModelT, ResultModelT]):
             arguments={
                 "x-dead-letter-exchange": self._settings.rabbitmq_dead_letter_exchange,
                 "x-dead-letter-routing-key": self._command_routing_key,
+                "x-max-priority": self._settings.rabbitmq_max_priority,
             },
         )
         publisher = PikaPublisher(
