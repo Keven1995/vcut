@@ -1,0 +1,61 @@
+groups:
+  - name: vcut-platform
+    rules:
+      - alert: VcutCommandQueueStopped
+        expr: |
+          vcut_rabbitmq_queue_messages{queue=~"command.*"} > 0
+          and on (queue) vcut_rabbitmq_queue_consumers{queue=~"command.*"} == 0
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: A fila {{ $labels.queue }} possui mensagens sem consumidores
+          description: Verifique a saúde e a escala do worker correspondente.
+
+      - alert: VcutDeadLetterQueueGrowing
+        expr: delta(vcut_rabbitmq_queue_messages{queue=~"dlq.*"}[5m]) > 0
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: A fila {{ $labels.queue }} recebeu mensagens de falha
+          description: Inspecione a DLQ e o código de falha antes de replay.
+
+      - alert: VcutOutboxDelayed
+        expr: vcut_outbox_oldest_pending_seconds > 120
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: Há uma mensagem outbox sem publicação por mais de dois minutos
+          description: Verifique conectividade, publisher confirms e fila RabbitMQ.
+
+      - alert: VcutStorageNearCapacity
+        expr: vcut_storage_capacity_utilization >= 0.8
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: O storage rastreado atingiu pelo menos 80% da capacidade configurada
+          description: Confira OBJECT_STORAGE_CAPACITY_BYTES e a retenção de objetos.
+
+      - alert: VcutFinalRenderFailures
+        expr: |
+          increase(vcut_worker_messages_total{
+            queue=~".*final-render", outcome="FAILED"
+          }[5m]) > 0
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: Falha de render final detectada
+          description: Inspecione os códigos sanitizados de falha antes do retry.
+
+      - alert: VcutRabbitMetricsUnavailable
+        expr: vcut_rabbitmq_connection_available == 0
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: A API não consegue coletar métricas do RabbitMQ
+          description: A profundidade das filas está indisponível até a conexão voltar.

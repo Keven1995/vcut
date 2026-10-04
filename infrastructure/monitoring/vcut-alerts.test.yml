@@ -1,0 +1,75 @@
+rule_files:
+  - vcut-alerts.yml
+
+evaluation_interval: 1m
+
+tests:
+  - interval: 1m
+    input_series:
+      - series: 'vcut_rabbitmq_queue_messages{queue="command.video-validation"}'
+        values: '4 4 4 4 4 4 4'
+      - series: 'vcut_rabbitmq_queue_consumers{queue="command.video-validation"}'
+        values: '0 0 0 0 0 0 0'
+      - series: 'vcut_rabbitmq_queue_messages{queue="dlq.final-render"}'
+        values: '0 0 1 1 1 1 1'
+      - series: vcut_outbox_oldest_pending_seconds
+        values: '180 180 180 180 180 180 180'
+      - series: vcut_storage_capacity_utilization
+        values: '0.9 0.9 0.9 0.9 0.9 0.9 0.9'
+      - series: 'vcut_worker_messages_total{queue="vcut.pipeline.commands.final-render",outcome="FAILED"}'
+        values: '0 0 1 1 1 1 1'
+      - series: vcut_rabbitmq_connection_available
+        values: '1 1 0 0 0 0 0'
+    alert_rule_test:
+      - eval_time: 6m
+        alertname: VcutCommandQueueStopped
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              queue: command.video-validation
+            exp_annotations:
+              summary: A fila command.video-validation possui mensagens sem consumidores
+              description: Verifique a saúde e a escala do worker correspondente.
+      - eval_time: 6m
+        alertname: VcutDeadLetterQueueGrowing
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              queue: dlq.final-render
+            exp_annotations:
+              summary: A fila dlq.final-render recebeu mensagens de falha
+              description: Inspecione a DLQ e o código de falha antes de replay.
+      - eval_time: 6m
+        alertname: VcutOutboxDelayed
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+            exp_annotations:
+              summary: Há uma mensagem outbox sem publicação por mais de dois minutos
+              description: Verifique conectividade, publisher confirms e fila RabbitMQ.
+      - eval_time: 6m
+        alertname: VcutStorageNearCapacity
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+            exp_annotations:
+              summary: O storage rastreado atingiu pelo menos 80% da capacidade configurada
+              description: Confira OBJECT_STORAGE_CAPACITY_BYTES e a retenção de objetos.
+      - eval_time: 6m
+        alertname: VcutFinalRenderFailures
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              queue: vcut.pipeline.commands.final-render
+              outcome: FAILED
+            exp_annotations:
+              summary: Falha de render final detectada
+              description: Inspecione os códigos sanitizados de falha antes do retry.
+      - eval_time: 6m
+        alertname: VcutRabbitMetricsUnavailable
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+            exp_annotations:
+              summary: A API não consegue coletar métricas do RabbitMQ
+              description: A profundidade das filas está indisponível até a conexão voltar.
