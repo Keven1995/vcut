@@ -680,6 +680,144 @@ input:focus {
   margin: 34px 0 0;
 }
 
+.external-import-panel {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 22px;
+  margin-top: 42px;
+}
+
+.external-import-panel h2 {
+  margin: 0;
+  font-size: clamp(1.5rem, 3vw, 2.2rem);
+}
+
+.external-import-panel > p {
+  max-width: 700px;
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.65;
+}
+
+.external-import-panel form {
+  display: grid;
+  max-width: 720px;
+  gap: 18px;
+}
+
+.external-import-panel label > span {
+  display: block;
+  margin-bottom: 8px;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.external-import-panel input[type="text"],
+.external-import-panel input:not([type]) {
+  width: 100%;
+  border: 1px solid var(--line);
+  padding: 13px 14px;
+  background: var(--paper);
+  color: var(--ink);
+}
+
+.external-import-consent {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  color: var(--muted);
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+
+.external-import-consent input {
+  flex: 0 0 auto;
+  margin-top: 3px;
+}
+
+.external-import-provenance {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 12px 20px;
+  margin: 4px 0 0;
+  border-top: 1px solid var(--line);
+  padding-top: 18px;
+}
+
+.external-import-provenance dt {
+  color: var(--muted);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+}
+
+.external-import-provenance dd {
+  margin: 5px 0 0;
+  overflow-wrap: anywhere;
+  font-size: 0.86rem;
+}
+
+.publication-metadata-panel {
+  display: grid;
+  gap: 16px;
+  margin-top: 28px;
+  border-top: 1px solid var(--line);
+  padding-top: 24px;
+}
+
+.publication-metadata-heading,
+.publication-metadata-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.publication-metadata-heading h3 {
+  margin: 8px 0 0;
+  font-size: 1.25rem;
+}
+
+.publication-metadata-panel > p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.84rem;
+  line-height: 1.5;
+}
+
+.publication-platform-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.publication-platform-tabs button {
+  border: 1px solid var(--line);
+  padding: 8px 11px;
+  background: transparent;
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.publication-platform-tabs button.selected {
+  border-color: var(--ink);
+  background: var(--ink);
+  color: var(--paper);
+}
+
+.publication-metadata-fields {
+  display: grid;
+  gap: 14px;
+}
+
+.publication-metadata-fields input,
+.publication-metadata-fields textarea {
+  width: 100%;
+}
+
+.publication-metadata-actions {
+  justify-content: flex-start;
+  flex-wrap: wrap;
+}
+
 .transcription-shell {
   padding-bottom: 100px;
 }

@@ -6,9 +6,11 @@ import { type ChangeEvent, type FormEvent, useEffect, useRef, useState } from "r
 import { apiRequest } from "../../../../lib/api-client";
 import { invalidateServerQuery, useServerQuery } from "../../../../lib/server-state";
 import { fetchJob, jobQueryKey, parseJob, type Job } from "../../../../features/jobs/job-api";
-import { fetchVideo, videoQueryKey, type Video } from "../../../../features/videos/video-api";
+import { ExternalVideoImportPanel } from "../../../../features/videos/external-video-import-panel";
+import { fetchVideo, videoQueryKey, type ImportedVideo, type Video } from "../../../../features/videos/video-api";
 
 const MAX_UPLOAD_BYTES = 512 * 1024 * 1024;
+const EXTERNAL_VIDEO_IMPORT_ENABLED = process.env.NEXT_PUBLIC_EXTERNAL_VIDEO_IMPORT_ENABLED === "true";
 
 type UploadPhase = "idle" | "creating" | "uploading" | "confirming" | "ready" | "processing" | "failed" | "cancelled";
 
@@ -300,6 +302,22 @@ export default function ProjectUploadPage() {
           ) : null}
         </div>
       </section>
+      {EXTERNAL_VIDEO_IMPORT_ENABLED ? (
+        <ExternalVideoImportPanel
+          projectId={params.projectId}
+          onImported={(result: ImportedVideo) => {
+            videoIdRef.current = result.video.id;
+            setSelectedFile(null);
+            setState({
+              phase: "ready",
+              progress: 100,
+              video: result.video,
+              error: null,
+              job: null
+            });
+          }}
+        />
+      ) : null}
       <p className="upload-footnote">O arquivo fica associado somente a este projeto e usuario. URLs assinadas expiram automaticamente.</p>
     </main>
   );

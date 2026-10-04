@@ -38,6 +38,7 @@ import {
 } from "./clip-editor-utils";
 import { ClipTimeline } from "./clip-timeline";
 import { ClipPreviewPlayer } from "./clip-preview-player";
+import { PublicationMetadataPanel } from "./publication-metadata-panel";
 
 type ClipEditorProps = {
   readonly videoId: string;
@@ -424,6 +425,7 @@ export function ClipEditor({ videoId, candidate }: ClipEditorProps) {
               onRetry={(renderId) => void retryFinalRender(renderId)}
             />
           ) : null}
+          {clipId ? <PublicationMetadataPanel clipId={clipId} /> : null}
           {message ? <p className="clip-editor-message" aria-live="polite">{message}</p> : null}
           {clipQuery.error ? <p className="form-error" role="alert">{clipQuery.error.message}</p> : null}
           {clipQuery.data?.status === "FAILED" ? <p className="form-error" role="alert">A geração falhou. Salve os ajustes e tente gerar novamente.</p> : null}
