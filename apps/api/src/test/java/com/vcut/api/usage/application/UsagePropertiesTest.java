@@ -16,7 +16,7 @@ class UsagePropertiesTest {
     UsageProperties properties =
         new UsageProperties(
             new UsageProperties.PlanSettings(
-                60, 500, 3_600, 5_000, 1, 1_920, 1_920, newRetention(30, 7, 3, 7, 30, 30, 7)),
+                60, 500, 3_600, 5_000, 1, 1_920, 1_920, 0, newRetention(30, 7, 3, 7, 30, 30, 7)),
             new UsageProperties.PlanSettings(
                 600,
                 2_000,
@@ -25,6 +25,7 @@ class UsagePropertiesTest {
                 3,
                 3_840,
                 3_840,
+                5,
                 newRetention(90, 30, 14, 30, 90, 90, 14)),
             new UsageProperties.CostSettings(
                 BigDecimal.ZERO,
@@ -45,6 +46,7 @@ class UsagePropertiesTest {
     assertThat(free.retentionPolicy().retentionFor(RetentionAssetType.NORMALIZED))
         .isEqualTo(Duration.ofDays(30));
     assertThat(pro.monthlyProcessingMinutes()).isEqualByComparingTo("600");
+    assertThat(pro.workerPriority()).isEqualTo(5);
     assertThat(pro.maxStorageBytes()).isEqualTo(50_000);
     assertThat(pro.retentionPolicy().retentionFor(RetentionAssetType.FINAL))
         .isEqualTo(Duration.ofDays(90));

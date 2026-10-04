@@ -1,0 +1,4 @@
+vcut:
+  payments:
+    sandbox:
+      enabled: ${PAYMENT_SANDBOX_ENABLED:false}

@@ -107,6 +107,28 @@ public record UsagePeriod(
         now);
   }
 
+  public UsagePeriod withPlanCode(PlanCode newPlanCode, Instant now) {
+    return new UsagePeriod(
+        id,
+        userId,
+        Objects.requireNonNull(newPlanCode, "newPlanCode"),
+        periodStart,
+        periodEnd,
+        reservedMinutes,
+        processedMinutes,
+        storedBytes,
+        renders,
+        transcriptionMinutes,
+        multimodalMinutes,
+        llmTokens,
+        cpuSeconds,
+        gpuSeconds,
+        bandwidthBytes,
+        estimatedCost,
+        createdAt,
+        now);
+  }
+
   public UsagePeriod withAdditionalMetrics(
       long additionalStorageBytes,
       long additionalRenders,

@@ -80,4 +80,16 @@ public class RetentionApplicationService {
   public void markDeleted(String objectKey) {
     retentionRepository.markDeleted(objectKey, clock.instant());
   }
+
+  @Transactional
+  public void refreshForUser(UUID userId) {
+    var policy = usageApplicationService.limitsForUser(userId).retentionPolicy();
+    for (RetainedObject retainedObject : retentionRepository.findRetainedForUser(userId)) {
+      Instant expiresAt =
+          retainedObject.createdAt().plus(policy.retentionFor(retainedObject.assetType()));
+      if (!expiresAt.equals(retainedObject.expiresAt())) {
+        retentionRepository.updateExpiration(retainedObject.id(), expiresAt);
+      }
+    }
+  }
 }

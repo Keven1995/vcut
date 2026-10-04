@@ -56,6 +56,22 @@ public class JdbcRetentionRepository implements RetentionRepository {
   }
 
   @Override
+  public List<RetainedObject> findRetainedForUser(UUID userId) {
+    return jdbcTemplate.query(
+        "SELECT * FROM retained_objects WHERE user_id = ? AND retention_status = 'RETAINED'",
+        JdbcRetentionRepository::map,
+        userId);
+  }
+
+  @Override
+  public void updateExpiration(UUID id, Instant expiresAt) {
+    jdbcTemplate.update(
+        "UPDATE retained_objects SET expires_at = ? WHERE id = ? AND retention_status = 'RETAINED'",
+        Timestamp.from(expiresAt),
+        id);
+  }
+
+  @Override
   public void updateSize(String objectKey, long sizeBytes) {
     jdbcTemplate.update(
         "UPDATE retained_objects SET size_bytes = ? WHERE object_key = ? "

@@ -309,6 +309,24 @@ public class UsageApplicationService {
     return planLimitsProvider.limitsFor(currentPlan(userId, clock.instant()));
   }
 
+  @Transactional
+  public void synchronizePlanSnapshot(UUID userId, PlanCode planCode) {
+    Instant now = clock.instant();
+    PeriodBounds bounds = currentPeriod(now);
+    UsagePeriod period =
+        usageRepository.lockOrCreatePeriod(
+            UsagePeriod.empty(
+                UUID.randomUUID(), userId, planCode, bounds.start(), bounds.end(), now));
+    if (period.planCode() != planCode) {
+      usageRepository.updatePeriod(period.withPlanCode(planCode, now));
+    }
+  }
+
+  @Transactional(readOnly = true)
+  public int workerPriorityForUser(UUID userId) {
+    return planLimitsProvider.limitsFor(currentPlan(userId, clock.instant())).workerPriority();
+  }
+
   @Transactional(readOnly = true)
   public void validateVideoMetadata(
       UUID userId, BigDecimal durationSeconds, Integer width, Integer height) {
@@ -393,8 +411,15 @@ public class UsageApplicationService {
 
   private UsagePeriod lockPeriod(UUID userId, PlanCode planCode, PeriodBounds bounds) {
     Instant now = clock.instant();
-    return usageRepository.lockOrCreatePeriod(
-        UsagePeriod.empty(UUID.randomUUID(), userId, planCode, bounds.start(), bounds.end(), now));
+    UsagePeriod period =
+        usageRepository.lockOrCreatePeriod(
+            UsagePeriod.empty(
+                UUID.randomUUID(), userId, planCode, bounds.start(), bounds.end(), now));
+    if (period.planCode() != planCode) {
+      period = period.withPlanCode(planCode, now);
+      usageRepository.updatePeriod(period);
+    }
+    return period;
   }
 
   private static PeriodBounds currentPeriod(Instant instant) {

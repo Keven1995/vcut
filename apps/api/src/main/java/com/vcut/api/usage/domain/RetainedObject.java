@@ -56,6 +56,25 @@ public record RetainedObject(
         deletedAt);
   }
 
+  public RetainedObject withExpiration(Instant newExpiresAt) {
+    if (status != RetentionStatus.RETAINED) {
+      throw new IllegalStateException("only retained objects can have their expiration changed");
+    }
+    return new RetainedObject(
+        id,
+        userId,
+        projectId,
+        objectKey,
+        assetType,
+        sizeBytes,
+        status,
+        newExpiresAt,
+        deleteAttempts,
+        lastFailureCode,
+        createdAt,
+        deletedAt);
+  }
+
   public RetainedObject markDeletePending() {
     return new RetainedObject(
         id,

@@ -12,6 +12,10 @@ public interface RetentionRepository {
 
   Optional<RetainedObject> findByKey(String objectKey);
 
+  List<RetainedObject> findRetainedForUser(UUID userId);
+
+  void updateExpiration(UUID id, Instant expiresAt);
+
   void updateSize(String objectKey, long sizeBytes);
 
   void markDeleted(String objectKey, Instant deletedAt);

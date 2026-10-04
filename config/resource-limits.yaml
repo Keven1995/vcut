@@ -20,6 +20,7 @@ quotas:
   free:
     monthlyProcessingMinutes: 60
     concurrentJobs: 1
+    workerPriority: 0
     maxFileSizeBytes: 536870912
     maxDurationSeconds: 7200
     maxStorageBytes: 5368709120
@@ -36,6 +37,7 @@ quotas:
   pro:
     monthlyProcessingMinutes: 600
     concurrentJobs: 3
+    workerPriority: 5
     maxFileSizeBytes: 2147483648
     maxDurationSeconds: 7200
     maxStorageBytes: 53687091200
@@ -49,6 +51,24 @@ quotas:
       final: 90
       thumbnail: 90
       failedJobArtifact: 14
+
+subscriptionBilling:
+  currency: USD
+  proMonthlyPriceMinorUnits: 0
+  proPriceStatus: sandbox-unpriced
+  checkoutTtlMinutes: 30
+  paymentAdapter: sandbox
+  sandboxEnabledByDefault: false
+  webhookTimestampToleranceSeconds: 300
+
+subscriptionBilling:
+  currency: USD
+  proMonthlyPriceMinorUnits: 0
+  proPriceStatus: sandbox-unpriced
+  checkoutTtlMinutes: 30
+  paymentAdapter: sandbox
+  sandboxEnabledByDefault: false
+  webhookTimestampToleranceSeconds: 300
 
 usageCostRates:
   currency: USD

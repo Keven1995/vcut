@@ -27,6 +27,7 @@ public record UsageProperties(PlanSettings free, PlanSettings pro, CostSettings 
         settings.maxConcurrentJobs(),
         settings.maxWidth(),
         settings.maxHeight(),
+        settings.workerPriority(),
         new RetentionPolicy(
             settings.retention().originalDays(),
             settings.retention().audioDays(),
@@ -56,6 +57,7 @@ public record UsageProperties(PlanSettings free, PlanSettings pro, CostSettings 
       int maxConcurrentJobs,
       int maxWidth,
       int maxHeight,
+      int workerPriority,
       RetentionSettings retention) {
     public PlanSettings {
       Objects.requireNonNull(retention, "retention");
@@ -67,6 +69,9 @@ public record UsageProperties(PlanSettings free, PlanSettings pro, CostSettings 
           || maxWidth <= 0
           || maxHeight <= 0) {
         throw new IllegalArgumentException("usage plan limits must be positive");
+      }
+      if (workerPriority < 0 || workerPriority > 10) {
+        throw new IllegalArgumentException("workerPriority must be between 0 and 10");
       }
     }
   }

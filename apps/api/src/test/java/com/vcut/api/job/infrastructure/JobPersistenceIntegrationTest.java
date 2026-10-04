@@ -3,9 +3,21 @@ package com.vcut.api.job.infrastructure;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.vcut.api.shared.errors.QuotaExceededException;
+import com.vcut.api.subscription.domain.BillingEventRecord;
+import com.vcut.api.subscription.domain.BillingEventStatus;
+import com.vcut.api.subscription.domain.BillingEventType;
+import com.vcut.api.subscription.domain.BillingLedgerEntry;
+import com.vcut.api.subscription.domain.BillingLedgerType;
+import com.vcut.api.subscription.domain.CheckoutSession;
+import com.vcut.api.subscription.domain.CheckoutStatus;
+import com.vcut.api.subscription.domain.PaidSubscription;
+import com.vcut.api.subscription.domain.SubscriptionPeriod;
+import com.vcut.api.subscription.domain.SubscriptionStatus;
+import com.vcut.api.subscription.infrastructure.JdbcSubscriptionPaymentRepository;
 import com.vcut.api.usage.application.PlanLimits;
 import com.vcut.api.usage.application.PlanLimitsProvider;
 import com.vcut.api.usage.application.UsageApplicationService;
+import com.vcut.api.usage.domain.PlanCode;
 import com.vcut.api.usage.domain.RetentionPolicy;
 import com.vcut.api.usage.domain.UsageCostRates;
 import com.vcut.api.usage.domain.UsageMetrics;
@@ -183,6 +195,7 @@ class JobPersistenceIntegrationTest {
                 3,
                 1920,
                 1080,
+                0,
                 new RetentionPolicy(30, 7, 3, 7, 30, 30, 7));
     UsageApplicationService usage =
         new UsageApplicationService(
@@ -297,6 +310,18 @@ class JobPersistenceIntegrationTest {
                 Integer.class,
                 userId))
         .isEqualTo(1);
+    transaction.executeWithoutResult(
+        ignored -> usage.synchronizePlanSnapshot(userId, PlanCode.PRO));
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT plan_code FROM usage_periods WHERE user_id = ?", String.class, userId))
+        .isEqualTo("PRO");
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT processed_minutes FROM usage_periods WHERE user_id = ?",
+                BigDecimal.class,
+                userId))
+        .isEqualByComparingTo("40");
 
     UUID failedResourceId = UUID.randomUUID();
     transaction.executeWithoutResult(
@@ -318,6 +343,122 @@ class JobPersistenceIntegrationTest {
                 Integer.class,
                 userId))
         .isEqualTo(1);
+  }
+
+  @Test
+  void persistsProviderCheckoutEventsAndReconcilesTheInternalBillingLedger() {
+    UUID userId = UUID.randomUUID();
+    Timestamp now = Timestamp.from(Instant.parse("2026-10-04T12:00:00Z"));
+    jdbc.update(
+        "INSERT INTO users (id, email, normalized_email, password_hash, status, created_at, updated_at) "
+            + "VALUES (?, ?, ?, ?, 'ACTIVE', ?, ?)",
+        userId,
+        userId + "@billing.example.test",
+        userId + "@billing.example.test",
+        "test-hash",
+        now,
+        now);
+    var repository = new JdbcSubscriptionPaymentRepository(jdbc);
+    UUID checkoutId = UUID.randomUUID();
+    Instant instant = now.toInstant();
+    CheckoutSession pending =
+        new CheckoutSession(
+            checkoutId,
+            userId,
+            PlanCode.PRO,
+            CheckoutStatus.PENDING,
+            "sandbox",
+            null,
+            null,
+            null,
+            1_200,
+            java.util.Currency.getInstance("USD"),
+            instant.plusSeconds(1_800),
+            instant,
+            instant,
+            null);
+    repository.save(pending);
+    CheckoutSession attached =
+        pending.attachProviderDetails(
+            "provider-checkout-id",
+            "provider-customer-id",
+            "https://checkout.example.test/session",
+            pending.expiresAt(),
+            instant.plusSeconds(1));
+    repository.update(attached);
+    UUID billingEventId = UUID.randomUUID();
+    BillingEventRecord processingEvent =
+        new BillingEventRecord(
+            billingEventId,
+            "sandbox",
+            "provider-event-id",
+            1,
+            BillingEventType.SUBSCRIPTION_CREATED,
+            BillingEventStatus.PROCESSING,
+            instant.plusSeconds(2),
+            null,
+            null,
+            null,
+            1_200,
+            java.util.Currency.getInstance("USD"),
+            instant.plusSeconds(3),
+            null);
+    assertThat(repository.registerReceived(processingEvent)).isTrue();
+    assertThat(repository.registerReceived(processingEvent)).isFalse();
+    PaidSubscription subscription =
+        new PaidSubscription(
+            UUID.randomUUID(),
+            userId,
+            PlanCode.PRO,
+            SubscriptionStatus.ACTIVE,
+            "sandbox",
+            "provider-customer-id",
+            "provider-subscription-id",
+            1_200,
+            java.util.Currency.getInstance("USD"),
+            new SubscriptionPeriod(instant, instant.plusSeconds(2_592_000)),
+            false,
+            instant.plusSeconds(2),
+            instant.plusSeconds(2),
+            instant.plusSeconds(2));
+    repository.save(subscription);
+    CheckoutSession completed = attached.complete(instant.plusSeconds(2));
+    repository.update(completed);
+    repository.completeEvent(
+        new BillingEventRecord(
+            billingEventId,
+            "sandbox",
+            "provider-event-id",
+            1,
+            BillingEventType.SUBSCRIPTION_CREATED,
+            BillingEventStatus.APPLIED,
+            instant.plusSeconds(2),
+            userId,
+            checkoutId,
+            subscription.id(),
+            1_200,
+            java.util.Currency.getInstance("USD"),
+            instant.plusSeconds(3),
+            instant.plusSeconds(3)));
+    repository.saveLedgerEntry(
+        new BillingLedgerEntry(
+            UUID.randomUUID(),
+            userId,
+            subscription.id(),
+            billingEventId,
+            BillingLedgerType.CHARGE,
+            1_200,
+            java.util.Currency.getInstance("USD"),
+            instant.plusSeconds(2)));
+
+    var reconciliation = repository.reconcileForUser(userId, java.util.Currency.getInstance("USD"));
+
+    assertThat(repository.findLatestForUser(userId)).contains(subscription);
+    assertThat(repository.findByProviderSessionIdForUpdate("provider-checkout-id"))
+        .contains(completed);
+    assertThat(reconciliation.appliedEventCount()).isEqualTo(1);
+    assertThat(reconciliation.ledgerEntryCount()).isEqualTo(1);
+    assertThat(reconciliation.discrepancyMinorUnits()).isZero();
   }
 
   private static void reserveAfterBarrier(

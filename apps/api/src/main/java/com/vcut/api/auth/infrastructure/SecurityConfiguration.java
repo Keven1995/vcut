@@ -66,6 +66,8 @@ public class SecurityConfiguration {
                         "/api/auth/login",
                         "/api/auth/refresh")
                     .permitAll()
+                    .requestMatchers(HttpMethod.POST, "/api/payments/sandbox/webhook")
+                    .permitAll()
                     .anyRequest()
                     .authenticated())
         .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
@@ -77,7 +79,13 @@ public class SecurityConfiguration {
     CorsConfiguration configuration = new CorsConfiguration();
     configuration.setAllowedOrigins(List.of(webProperties.allowedOrigin()));
     configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
-    configuration.setAllowedHeaders(List.of("Authorization", "Content-Type", "X-Correlation-Id"));
+    configuration.setAllowedHeaders(
+        List.of(
+            "Authorization",
+            "Content-Type",
+            "X-Correlation-Id",
+            "X-Payment-Timestamp",
+            "X-Payment-Signature"));
     configuration.setAllowCredentials(true);
 
     UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();

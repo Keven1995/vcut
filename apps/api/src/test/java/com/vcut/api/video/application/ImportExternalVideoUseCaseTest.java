@@ -65,6 +65,7 @@ class ImportExternalVideoUseCaseTest {
                 1,
                 1920,
                 1920,
+                0,
                 new RetentionPolicy(30, 7, 3, 7, 30, 30, 7)));
     when(projects.findByIdForUser(PROJECT_ID, USER_ID))
         .thenReturn(
