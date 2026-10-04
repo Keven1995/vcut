@@ -70,6 +70,18 @@ class CandidateScores(BaseModel):
     engagement: ConfidenceScore
 
 
+class AnalysisUsageMetrics(BaseModel):
+    """Non-sensitive consumption measurements emitted with one analysis result."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True, populate_by_name=True)
+
+    llm_tokens: int = Field(default=0, alias="llmTokens", ge=0)
+    multimodal_minutes: float = Field(default=0, alias="multimodalMinutes", ge=0)
+    cpu_seconds: float = Field(default=0, alias="cpuSeconds", ge=0)
+    gpu_seconds: float = Field(default=0, alias="gpuSeconds", ge=0)
+    bandwidth_bytes: int = Field(default=0, alias="bandwidthBytes", ge=0)
+
+
 class ClipCandidate(BaseModel):
     """A validated candidate interval; internal scores never need to be exposed."""
 
@@ -132,6 +144,11 @@ class AnalysisProviderResponse(BaseModel):
     has_reliable_candidate: bool = Field(
         validation_alias=AliasChoices("has_reliable_candidate", "hasReliableCandidate"),
         serialization_alias="hasReliableCandidate",
+    )
+    usage_metrics: AnalysisUsageMetrics | None = Field(
+        default=None,
+        validation_alias=AliasChoices("usage_metrics", "usageMetrics"),
+        serialization_alias="usageMetrics",
     )
 
     @model_validator(mode="after")

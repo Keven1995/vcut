@@ -47,6 +47,8 @@ def test_experimental_vision_and_multimodal_flags_are_disabled_by_default() -> N
     assert settings.face_tracking_enabled is False
     assert settings.multimodal_analysis_enabled is False
     assert settings.auto_zoom_enabled is False
+    assert settings.retention_cleanup_enabled is False
+    assert settings.retention_cleanup_dry_run is True
 
 
 def test_experimental_flags_can_be_enabled_per_worker_environment(
@@ -56,6 +58,8 @@ def test_experimental_flags_can_be_enabled_per_worker_environment(
     monkeypatch.setenv("FACE_TRACKING", "true")
     monkeypatch.setenv("MULTIMODAL_ANALYSIS", "true")
     monkeypatch.setenv("AUTO_ZOOM", "true")
+    monkeypatch.setenv("RETENTION_CLEANUP_ENABLED", "true")
+    monkeypatch.setenv("RETENTION_CLEANUP_DRY_RUN", "false")
 
     settings = WorkerSettings.from_environment()
 
@@ -63,6 +67,8 @@ def test_experimental_flags_can_be_enabled_per_worker_environment(
     assert settings.face_tracking_enabled is True
     assert settings.multimodal_analysis_enabled is True
     assert settings.auto_zoom_enabled is True
+    assert settings.retention_cleanup_enabled is True
+    assert settings.retention_cleanup_dry_run is False
 
 
 def test_live_endpoint_does_not_require_dependencies() -> None:

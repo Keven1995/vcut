@@ -4,9 +4,15 @@ from tempfile import TemporaryDirectory
 
 from vcut_workers.application.clip_generation import ClipGenerationLimits, GenerateClipUseCase
 from vcut_workers.application.errors import MediaProcessingError
-from vcut_workers.application.ports import MediaProcessor, SmartCropAnalyzer, WritableObjectStorage
+from vcut_workers.application.ports import (
+    MediaProcessor,
+    RetentionRecorder,
+    SmartCropAnalyzer,
+    WritableObjectStorage,
+)
 from vcut_workers.contracts.clip_generation import ClipGenerationCommand
 from vcut_workers.contracts.final_render import FinalRenderCommand, FinalRenderResult
+from vcut_workers.domain.retention import RetainedObjectKind
 
 
 class FinalRenderUseCase:
@@ -19,6 +25,7 @@ class FinalRenderUseCase:
         limits: ClipGenerationLimits | None = None,
         smart_reframing: SmartCropAnalyzer | None = None,
         smart_reframing_enabled: bool = False,
+        retention_recorder: RetentionRecorder | None = None,
     ) -> None:
         self._object_storage = object_storage
         self._media_processor = media_processor
@@ -28,7 +35,10 @@ class FinalRenderUseCase:
             limits,
             smart_reframing,
             smart_reframing_enabled,
+            retention_recorder,
+            RetainedObjectKind.FINAL,
         )
+        self._retention_recorder = retention_recorder
 
     def execute(
         self,
@@ -59,10 +69,19 @@ class FinalRenderUseCase:
         )
         report(82)
         try:
-            if self._object_storage.head(command.thumbnail_object_key) is None:
+            existing_thumbnail = self._object_storage.head(command.thumbnail_object_key)
+            if existing_thumbnail is None:
                 report(90)
                 self._create_thumbnail(command)
                 report(97)
+            elif self._retention_recorder is not None:
+                self._retention_recorder.register(
+                    command.user_id,
+                    command.project_id,
+                    command.thumbnail_object_key,
+                    RetainedObjectKind.THUMBNAIL,
+                    existing_thumbnail.content_length,
+                )
         except Exception:
             self._delete_output(command.thumbnail_object_key)
             if not output_existed:
@@ -97,7 +116,17 @@ class FinalRenderUseCase:
             )
             if not thumbnail.is_file() or thumbnail.stat().st_size == 0:
                 raise MediaProcessingError("THUMBNAIL_EMPTY", "final render thumbnail is empty")
-            self._object_storage.upload(thumbnail, command.thumbnail_object_key, "image/jpeg")
+            stored = self._object_storage.upload(
+                thumbnail, command.thumbnail_object_key, "image/jpeg"
+            )
+            if self._retention_recorder is not None:
+                self._retention_recorder.register(
+                    command.user_id,
+                    command.project_id,
+                    command.thumbnail_object_key,
+                    RetainedObjectKind.THUMBNAIL,
+                    stored.content_length,
+                )
 
     def _delete_output(self, object_key: str) -> None:
         try:

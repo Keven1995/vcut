@@ -122,6 +122,27 @@ def test_use_case_rejects_incomplete_analysis_provider_output() -> None:
         use_case.execute(command(reliable_segments()))
 
 
+class MeteredAnalyzer:
+    def analyze(self, request: AnalyzeClipsCommand, segments: object) -> object:
+        del segments
+        return {
+            "provider": "metered",
+            "durationSeconds": request.duration_seconds,
+            "candidates": [],
+            "hasReliableCandidate": False,
+            "usageMetrics": {"llmTokens": 123},
+        }
+
+
+def test_usage_metrics_are_preserved_in_the_published_analysis_result() -> None:
+    result = GenerateClipCandidatesUseCase(cast(ContentAnalyzer, MeteredAnalyzer())).execute(
+        command(reliable_segments())
+    )
+
+    assert result.usage_metrics is not None
+    assert result.usage_metrics.llm_tokens == 123
+
+
 def test_low_confidence_short_transcript_has_no_reliable_candidate() -> None:
     result = GenerateClipCandidatesUseCase(DeterministicContentAnalyzer()).execute(
         command(

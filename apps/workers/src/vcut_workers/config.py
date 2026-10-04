@@ -4,6 +4,39 @@ from typing import Literal, cast
 from pydantic import BaseModel, ConfigDict, Field
 
 
+def _default_free_retention() -> dict[str, int]:
+    return {
+        "ORIGINAL": 30,
+        "NORMALIZED": 30,
+        "AUDIO": 7,
+        "FRAMES": 3,
+        "PREVIEW": 7,
+        "FINAL": 30,
+        "THUMBNAIL": 30,
+        "FAILED_JOB_ARTIFACT": 7,
+    }
+
+
+def _default_pro_retention() -> dict[str, int]:
+    return {
+        "ORIGINAL": 90,
+        "NORMALIZED": 90,
+        "AUDIO": 30,
+        "FRAMES": 14,
+        "PREVIEW": 30,
+        "FINAL": 90,
+        "THUMBNAIL": 90,
+        "FAILED_JOB_ARTIFACT": 14,
+    }
+
+
+def _retention_from_environment(prefix: str, defaults: dict[str, int]) -> dict[str, int]:
+    return {
+        asset_type: int(os.getenv(f"{prefix}_{asset_type}_DAYS", str(default_days)))
+        for asset_type, default_days in defaults.items()
+    }
+
+
 class WorkerSettings(BaseModel):
     model_config = ConfigDict(frozen=True)
 
@@ -74,7 +107,7 @@ class WorkerSettings(BaseModel):
     transcription_language: str | None = None
     content_analysis_provider: Literal["deterministic", "fallback"] = "deterministic"
     clip_generation_enabled: bool = True
-    clip_max_input_size_bytes: int = Field(default=536_870_912, gt=0)
+    clip_max_input_size_bytes: int = Field(default=2_147_483_648, gt=0)
     clip_max_duration_seconds: float = Field(default=90, gt=0)
     clip_duration_tolerance_seconds: float = Field(default=0.1, ge=0)
     clip_max_caption_cues: int = Field(default=500, ge=0)
@@ -94,6 +127,12 @@ class WorkerSettings(BaseModel):
     )
     face_tracking_enabled: bool = False
     auto_zoom_enabled: bool = False
+    retention_cleanup_enabled: bool = False
+    retention_cleanup_dry_run: bool = True
+    retention_cleanup_interval_seconds: int = Field(default=3600, gt=0)
+    retention_cleanup_batch_size: int = Field(default=100, gt=0)
+    retention_days_free: dict[str, int] = Field(default_factory=_default_free_retention)
+    retention_days_pro: dict[str, int] = Field(default_factory=_default_pro_retention)
 
     @classmethod
     def from_environment(cls) -> "WorkerSettings":
@@ -168,7 +207,7 @@ class WorkerSettings(BaseModel):
             ),
             clip_generation_enabled=os.getenv("CLIP_GENERATION_ENABLED", "true").lower() == "true",
             clip_max_input_size_bytes=int(
-                os.getenv("CLIP_MAX_INPUT_SIZE_BYTES", "536870912")
+                os.getenv("CLIP_MAX_INPUT_SIZE_BYTES", "2147483648")
             ),
             clip_max_duration_seconds=float(os.getenv("CLIP_MAX_DURATION_SECONDS", "90")),
             clip_duration_tolerance_seconds=float(
@@ -201,4 +240,18 @@ class WorkerSettings(BaseModel):
             ),
             face_tracking_enabled=os.getenv("FACE_TRACKING", "false").lower() == "true",
             auto_zoom_enabled=os.getenv("AUTO_ZOOM", "false").lower() == "true",
+            retention_cleanup_enabled=os.getenv("RETENTION_CLEANUP_ENABLED", "false").lower()
+            == "true",
+            retention_cleanup_dry_run=os.getenv("RETENTION_CLEANUP_DRY_RUN", "true").lower()
+            == "true",
+            retention_cleanup_interval_seconds=int(
+                os.getenv("RETENTION_CLEANUP_INTERVAL_SECONDS", "3600")
+            ),
+            retention_cleanup_batch_size=int(os.getenv("RETENTION_CLEANUP_BATCH_SIZE", "100")),
+            retention_days_free=_retention_from_environment(
+                "RETENTION_FREE", _default_free_retention()
+            ),
+            retention_days_pro=_retention_from_environment(
+                "RETENTION_PRO", _default_pro_retention()
+            ),
         )

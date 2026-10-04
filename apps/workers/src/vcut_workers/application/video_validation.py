@@ -11,7 +11,7 @@ from vcut_workers.domain.media import VideoMetadata
 
 
 class MediaValidationLimits(BaseModel):
-    max_file_size_bytes: int = Field(gt=0, default=536_870_912)
+    max_file_size_bytes: int = Field(gt=0, default=2_147_483_648)
     max_duration_seconds: int = Field(gt=0, default=7_200)
     max_width: int = Field(gt=0, default=7_680)
     max_height: int = Field(gt=0, default=4_320)

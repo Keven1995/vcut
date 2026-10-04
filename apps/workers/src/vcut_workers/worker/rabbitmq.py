@@ -44,6 +44,7 @@ from vcut_workers.infrastructure.ffmpeg.processor import (
     FFmpegVideoProcessor,
 )
 from vcut_workers.infrastructure.persistence.idempotency import PostgresIdempotencyStore
+from vcut_workers.infrastructure.persistence.retention import PostgresRetentionStore
 from vcut_workers.infrastructure.persistence.transcription import (
     ObjectStorageTranscriptionResultStore,
 )
@@ -463,6 +464,7 @@ def create_clip_generation_worker(
         ),
         smart_reframing,
         settings.smart_reframing_enabled,
+        retention_recorder=PostgresRetentionStore(settings),
     )
     return RabbitMqWorker(
         settings,
@@ -504,6 +506,7 @@ def create_final_render_worker(
         ),
         smart_reframing,
         settings.smart_reframing_enabled,
+        retention_recorder=PostgresRetentionStore(settings),
     )
     return RabbitMqWorker(
         settings,

@@ -2,6 +2,7 @@ import logging
 from collections.abc import Sequence
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from time import process_time
 
 from vcut_workers.application.ports import ContentAnalyzer, MultimodalAnalyzer, ObjectStorage
 from vcut_workers.contracts.clip_analysis import (
@@ -9,7 +10,11 @@ from vcut_workers.contracts.clip_analysis import (
     AnalyzeClipsCommand,
     AnalyzeClipsResult,
 )
-from vcut_workers.domain.clip_analysis import AnalysisProviderResponse, SemanticSegment
+from vcut_workers.domain.clip_analysis import (
+    AnalysisProviderResponse,
+    AnalysisUsageMetrics,
+    SemanticSegment,
+)
 
 LOGGER = logging.getLogger(__name__)
 
@@ -65,13 +70,20 @@ class GenerateClipCandidatesUseCase:
         self._object_storage = object_storage
 
     def execute(self, command: AnalyzeClipsCommand) -> AnalyzeClipsResult:
+        cpu_started = process_time()
         semantic_segments = segment_transcription(command.segments)
+        multimodal_minutes = 0.0
+        multimodal_used = False
+        bandwidth_bytes = 0
         if (
             self._multimodal_analyzer is not None
             and self._object_storage is not None
             and command.object_key is not None
         ):
             try:
+                source_metadata = self._object_storage.head(command.object_key)
+                if source_metadata is not None:
+                    bandwidth_bytes = source_metadata.content_length
                 with TemporaryDirectory(prefix="vcut-multimodal-analysis-") as directory:
                     source = Path(directory) / "source-video"
                     self._object_storage.download(command.object_key, source)
@@ -79,6 +91,9 @@ class GenerateClipCandidatesUseCase:
                         command, tuple(semantic_segments), source
                     )
                     command = command.model_copy(update={"multimodal_context": analysis.findings})
+                    if not analysis.transcription_fallback:
+                        multimodal_used = True
+                        multimodal_minutes = command.duration_seconds / 60
             except Exception as error:
                 # Multimodal context is supplemental; transcript analysis remains available.
                 LOGGER.warning("multimodal_analysis_fallback error=%s", type(error).__name__)
@@ -87,11 +102,24 @@ class GenerateClipCandidatesUseCase:
             tuple(semantic_segments),
         )
         response = AnalysisProviderResponse.model_validate(raw_response)
+        previous_metrics = response.usage_metrics or AnalysisUsageMetrics()
+        usage_metrics = previous_metrics.model_copy(
+            update={
+                "cpu_seconds": previous_metrics.cpu_seconds + (process_time() - cpu_started),
+                "multimodal_minutes": max(
+                    previous_metrics.multimodal_minutes,
+                    multimodal_minutes if multimodal_used else 0,
+                ),
+                "bandwidth_bytes": previous_metrics.bandwidth_bytes + bandwidth_bytes,
+            }
+        )
+        response = response.model_copy(update={"usage_metrics": usage_metrics})
         return AnalyzeClipsResult(
             provider=response.provider,
             duration_seconds=response.duration_seconds,
             candidates=response.candidates,
             has_reliable_candidate=response.has_reliable_candidate,
+            usage_metrics=response.usage_metrics,
         )
 
 

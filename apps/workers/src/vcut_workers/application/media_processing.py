@@ -6,14 +6,15 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field
 
 from vcut_workers.application.errors import MediaProcessingError
-from vcut_workers.application.ports import MediaProcessor, WritableObjectStorage
+from vcut_workers.application.ports import MediaProcessor, RetentionRecorder, WritableObjectStorage
 from vcut_workers.domain.media import AudioMetadata, VideoMetadata
+from vcut_workers.domain.retention import RetainedObjectKind
 
 
 class MediaProcessingLimits(BaseModel):
     model_config = ConfigDict(frozen=True)
 
-    max_input_size_bytes: int = Field(default=536_870_912, gt=0)
+    max_input_size_bytes: int = Field(default=2_147_483_648, gt=0)
     max_duration_seconds: float = Field(default=7_200, gt=0)
     max_temp_bytes: int = Field(default=4_294_967_296, gt=0)
     max_processing_seconds: float = Field(default=900, gt=0)
@@ -59,10 +60,12 @@ class NormalizeVideoUseCase:
         object_storage: WritableObjectStorage,
         media_processor: MediaProcessor,
         limits: MediaProcessingLimits | None = None,
+        retention_recorder: RetentionRecorder | None = None,
     ) -> None:
         self._object_storage = object_storage
         self._media_processor = media_processor
         self._limits = limits or MediaProcessingLimits()
+        self._retention_recorder = retention_recorder
 
     def execute(self, command: MediaPipelineCommand) -> MediaStageResult:
         output_key = artifact_key(command, "normalized", "video.mp4")
@@ -91,6 +94,14 @@ class NormalizeVideoUseCase:
             )
             _validate_artifact_size(destination, self._limits)
             stored = self._object_storage.upload(destination, output_key, "video/mp4")
+            if self._retention_recorder is not None:
+                self._retention_recorder.register(
+                    command.user_id,
+                    command.project_id,
+                    output_key,
+                    RetainedObjectKind.NORMALIZED,
+                    stored.content_length,
+                )
 
         return _result(
             "NORMALIZE",
@@ -131,10 +142,12 @@ class ExtractAudioUseCase:
         object_storage: WritableObjectStorage,
         media_processor: MediaProcessor,
         limits: MediaProcessingLimits | None = None,
+        retention_recorder: RetentionRecorder | None = None,
     ) -> None:
         self._object_storage = object_storage
         self._media_processor = media_processor
         self._limits = limits or MediaProcessingLimits()
+        self._retention_recorder = retention_recorder
 
     def execute(self, command: MediaPipelineCommand) -> MediaStageResult:
         input_key = artifact_key(command, "normalized", "video.mp4")
@@ -164,6 +177,14 @@ class ExtractAudioUseCase:
             _validate_audio_duration(video_metadata, audio_metadata, self._limits)
             _validate_artifact_size(destination, self._limits)
             stored = self._object_storage.upload(destination, output_key, "audio/wav")
+            if self._retention_recorder is not None:
+                self._retention_recorder.register(
+                    command.user_id,
+                    command.project_id,
+                    output_key,
+                    RetainedObjectKind.AUDIO,
+                    stored.content_length,
+                )
 
         return _result(
             "EXTRACT_AUDIO",
@@ -195,10 +216,12 @@ class GenerateMediaSamplesUseCase:
         object_storage: WritableObjectStorage,
         media_processor: MediaProcessor,
         limits: MediaProcessingLimits | None = None,
+        retention_recorder: RetentionRecorder | None = None,
     ) -> None:
         self._object_storage = object_storage
         self._media_processor = media_processor
         self._limits = limits or MediaProcessingLimits()
+        self._retention_recorder = retention_recorder
 
     def execute(
         self,
@@ -249,9 +272,25 @@ class GenerateMediaSamplesUseCase:
             _validate_artifact_size(thumbnail, self._limits)
             for frame in frames:
                 _validate_artifact_size(frame, self._limits)
-            self._object_storage.upload(thumbnail, thumbnail_key, "image/jpeg")
+            thumbnail_metadata = self._object_storage.upload(thumbnail, thumbnail_key, "image/jpeg")
+            if self._retention_recorder is not None:
+                self._retention_recorder.register(
+                    command.user_id,
+                    command.project_id,
+                    thumbnail_key,
+                    RetainedObjectKind.THUMBNAIL,
+                    thumbnail_metadata.content_length,
+                )
             for key, frame in zip(frame_keys, frames, strict=True):
-                self._object_storage.upload(frame, key, "image/jpeg")
+                frame_metadata = self._object_storage.upload(frame, key, "image/jpeg")
+                if self._retention_recorder is not None:
+                    self._retention_recorder.register(
+                        command.user_id,
+                        command.project_id,
+                        key,
+                        RetainedObjectKind.FRAMES,
+                        frame_metadata.content_length,
+                    )
 
         return _result(
             "MEDIA_SAMPLES",

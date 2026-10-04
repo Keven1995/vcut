@@ -13,6 +13,7 @@ from vcut_workers.domain.media import (
     VisionSignal,
 )
 from vcut_workers.domain.multimodal import MultimodalAnalysis
+from vcut_workers.domain.retention import ExpiredObject, RetainedObjectKind
 from vcut_workers.domain.transcription import TranscriptionResult
 from vcut_workers.domain.vision import SceneInterval
 
@@ -132,6 +133,32 @@ class SceneIntervalStore(Protocol):
         intervals: tuple[SceneInterval, ...],
     ) -> None:
         """Persist scene intervals for one immutable pipeline version."""
+
+
+class RetentionStore(Protocol):
+    def find_expired(self, *, limit: int) -> tuple[ExpiredObject, ...]:
+        """Return objects whose retention window elapsed without changing their state."""
+
+    def claim_expired(self, *, limit: int) -> tuple[ExpiredObject, ...]:
+        """Atomically claim expired objects for one cleanup attempt."""
+
+    def mark_deleted(self, object_id: UUID) -> None:
+        """Record successful deletion while retaining the audit row."""
+
+    def record_delete_failure(self, object_id: UUID, failure_code: str) -> None:
+        """Record a sanitized deletion failure for idempotent retry."""
+
+
+class RetentionRecorder(Protocol):
+    def register(
+        self,
+        user_id: UUID,
+        project_id: UUID,
+        object_key: str,
+        asset_type: RetainedObjectKind,
+        size_bytes: int,
+    ) -> None:
+        """Register a derived object with the plan-specific expiration time."""
 
 
 class TranscriptionProvider(Protocol):

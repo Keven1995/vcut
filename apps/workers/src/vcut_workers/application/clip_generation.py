@@ -6,7 +6,12 @@ from tempfile import TemporaryDirectory
 from pydantic import BaseModel, ConfigDict, Field
 
 from vcut_workers.application.errors import MediaProcessingError
-from vcut_workers.application.ports import MediaProcessor, SmartCropAnalyzer, WritableObjectStorage
+from vcut_workers.application.ports import (
+    MediaProcessor,
+    RetentionRecorder,
+    SmartCropAnalyzer,
+    WritableObjectStorage,
+)
 from vcut_workers.contracts.clip_generation import (
     ClipGenerationCommand,
     ClipGenerationResult,
@@ -19,6 +24,7 @@ from vcut_workers.domain.clip_generation import (
     CropSettings,
 )
 from vcut_workers.domain.media import VideoAsset, VideoMetadata
+from vcut_workers.domain.retention import RetainedObjectKind
 
 LOGGER = logging.getLogger(__name__)
 
@@ -26,7 +32,7 @@ LOGGER = logging.getLogger(__name__)
 class ClipGenerationLimits(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    max_input_size_bytes: int = Field(default=536_870_912, gt=0)
+    max_input_size_bytes: int = Field(default=2_147_483_648, gt=0)
     max_duration_seconds: float = Field(default=90, gt=0)
     duration_tolerance_seconds: float = Field(default=0.1, ge=0)
     max_caption_cues: int = Field(default=500, ge=0)
@@ -46,12 +52,16 @@ class GenerateClipUseCase:
         limits: ClipGenerationLimits | None = None,
         smart_reframing: SmartCropAnalyzer | None = None,
         smart_reframing_enabled: bool = False,
+        retention_recorder: RetentionRecorder | None = None,
+        retention_asset_type: RetainedObjectKind = RetainedObjectKind.PREVIEW,
     ) -> None:
         self._object_storage = object_storage
         self._media_processor = media_processor
         self._limits = limits or ClipGenerationLimits()
         self._smart_reframing = smart_reframing
         self._smart_reframing_enabled = smart_reframing_enabled
+        self._retention_recorder = retention_recorder
+        self._retention_asset_type = retention_asset_type
 
     def execute(self, command: ClipGenerationCommand) -> ClipGenerationResult:
         if len(command.caption_cues) > self._limits.max_caption_cues:
@@ -63,8 +73,11 @@ class GenerateClipUseCase:
                 "CLIP_DURATION_LIMIT_EXCEEDED", "clip duration exceeds the configured limit"
             )
 
-        if self._object_storage.head(command.output_object_key) is not None:
-            return self._reuse_existing(command)
+        existing_output = self._object_storage.head(command.output_object_key)
+        if existing_output is not None:
+            result = self._reuse_existing(command)
+            self._register_retention(command, existing_output.content_length)
+            return result
 
         try:
             with TemporaryDirectory(prefix="vcut-clip-generation-") as directory:
@@ -103,11 +116,12 @@ class GenerateClipUseCase:
                 self._media_processor.compose(source, destination, composition)
                 final_metadata = self._media_processor.probe(destination)
                 self._validate_final_metadata(command, final_metadata)
-                self._object_storage.upload(
+                stored_output = self._object_storage.upload(
                     destination,
                     command.output_object_key,
                     "video/mp4",
                 )
+                self._register_retention(command, stored_output.content_length)
                 return _ready_result(command, final_metadata)
         except Exception:
             self._delete_output(command.output_object_key)
@@ -203,6 +217,16 @@ class GenerateClipUseCase:
             self._object_storage.delete(object_key)
         except Exception:
             pass
+
+    def _register_retention(self, command: ClipGenerationCommand, size_bytes: int) -> None:
+        if self._retention_recorder is not None:
+            self._retention_recorder.register(
+                command.user_id,
+                command.project_id,
+                command.output_object_key,
+                self._retention_asset_type,
+                size_bytes,
+            )
 
 
 def _ready_result(

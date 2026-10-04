@@ -14,11 +14,15 @@ from vcut_workers.worker.rabbitmq import (
     create_transcription_worker,
     create_video_validation_worker,
 )
+from vcut_workers.worker.retention_cleanup import RetentionCleanupWorker
 
 
 def main() -> None:
     configure_logging()
     settings = WorkerSettings.from_environment()
+    if settings.retention_cleanup_enabled and os.getenv("WORKER_RUN_ONCE") == "true":
+        RetentionCleanupWorker(settings).run_once()
+        return
     if os.getenv("WORKER_CONSUME") == "true":
         Thread(
             target=create_video_validation_worker(settings).run_forever,
@@ -46,6 +50,12 @@ def main() -> None:
                 name="rabbitmq-final-render-consumer",
                 daemon=True,
             ).start()
+    if settings.retention_cleanup_enabled:
+        Thread(
+            target=RetentionCleanupWorker(settings).run_forever,
+            name="retention-cleanup-worker",
+            daemon=True,
+        ).start()
     if os.getenv("WORKER_RUN_ONCE") == "true":
         logging.getLogger(__name__).info(
             "worker_started",
