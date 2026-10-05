@@ -166,6 +166,21 @@ def test_audio_stage_rejects_duration_drift() -> None:
         ).execute(pipeline_command)
 
 
+def test_audio_stage_extracts_directly_from_original_when_not_normalized() -> None:
+    storage = InMemoryObjectStorage()
+    pipeline_command = command()
+    storage.put(pipeline_command.source_object_key, b"original", "video/mp4")
+    processor = FakeMediaProcessor()
+
+    result = ExtractAudioUseCase(storage, processor).execute(pipeline_command)
+
+    audio_key = f"users/{USER_ID}/projects/{PROJECT_ID}/audio/{VIDEO_ID}/v2/transcription.wav"
+    assert result.input_object_key == pipeline_command.source_object_key
+    assert result.output_object_keys == (audio_key,)
+    assert storage.head(audio_key) is not None
+    assert processor.audio_calls == 1
+
+
 def test_samples_reject_timestamps_outside_the_video() -> None:
     storage = InMemoryObjectStorage()
     pipeline_command = command()

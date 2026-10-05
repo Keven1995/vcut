@@ -75,6 +75,10 @@ class TranscriptionApplicationServiceTest {
     assertThat(command.resourceId()).isEqualTo(VIDEO_ID);
     assertThat(command.version()).isEqualTo(2);
     assertThat(command.data().get("language")).isEqualTo("pt-BR");
+    assertThat(command.data().get("userId")).isEqualTo(USER_ID.toString());
+    assertThat(command.data().get("projectId")).isEqualTo(PROJECT_ID.toString());
+    assertThat(command.data().get("sourceObjectKey").toString())
+        .isEqualTo("users/user/projects/project/source/video/original.mp4");
     assertThat(command.data().get("audioObjectKey").toString())
         .isEqualTo(
             "users/11111111-1111-4111-8111-111111111111/projects/22222222-2222-4222-8222-222222222222/audio/33333333-3333-4333-8333-333333333333/v2/transcription.wav");

@@ -10,6 +10,7 @@ from vcut_workers.application.transcription import (
     TranscribeAudioUseCase,
     TranscriptionCommand,
 )
+from vcut_workers.contracts.transcription import TranscribeAudioCommand
 from vcut_workers.domain.transcription import (
     TranscriptionProviderResponse,
     TranscriptionResult,
@@ -27,6 +28,33 @@ from vcut_workers.infrastructure.transcription.fake import (
 from vcut_workers.infrastructure.transcription.whisper import WhisperTranscriptionProvider
 
 VIDEO_ID = UUID("cccccccc-cccc-4ccc-8ccc-cccccccccccc")
+USER_ID = UUID("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
+PROJECT_ID = UUID("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb")
+
+
+def test_transcription_command_accepts_legacy_and_source_audio_payloads() -> None:
+    legacy = TranscribeAudioCommand.model_validate(
+        {
+            "videoId": str(VIDEO_ID),
+            "pipelineVersion": 1,
+            "audioObjectKey": "users/owner/projects/project/audio/video/v1/transcription.wav",
+        }
+    )
+    with_source = TranscribeAudioCommand.model_validate(
+        {
+            "videoId": str(VIDEO_ID),
+            "userId": str(USER_ID),
+            "projectId": str(PROJECT_ID),
+            "pipelineVersion": 1,
+            "sourceObjectKey": "users/owner/projects/project/source/video.mp4",
+            "audioObjectKey": "users/owner/projects/project/audio/video/v1/transcription.wav",
+        }
+    )
+
+    assert legacy.source_object_key is None
+    assert with_source.user_id == USER_ID
+    assert with_source.project_id == PROJECT_ID
+    assert with_source.source_object_key == "users/owner/projects/project/source/video.mp4"
 
 
 def valid_response() -> TranscriptionProviderResponse:
@@ -270,12 +298,8 @@ def test_transcription_retry_does_not_persist_partial_work() -> None:
         with pytest.raises(RuntimeError):
             use_case.execute(command)
         assert store.get(VIDEO_ID, 1) is None
-        retried = use_case.execute(
-            command
-        )
-        repeated = use_case.execute(
-            command
-        )
+        retried = use_case.execute(command)
+        repeated = use_case.execute(command)
 
     assert retried == repeated
     assert provider.calls == 2
@@ -301,4 +325,6 @@ def test_transcription_can_download_audio_from_storage_and_persist_versioned_jso
     )
 
     assert result_store.get(VIDEO_ID, 4) == result
-    assert object_storage.exists("transcriptions/cccccccc-cccc-4ccc-8ccc-cccccccccccc/v4/result.json")
+    assert object_storage.exists(
+        "transcriptions/cccccccc-cccc-4ccc-8ccc-cccccccccccc/v4/result.json"
+    )

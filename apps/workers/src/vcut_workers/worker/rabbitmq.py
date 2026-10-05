@@ -12,6 +12,11 @@ from pydantic import BaseModel, ValidationError
 from vcut_workers.application.clip_analysis import GenerateClipCandidatesUseCase
 from vcut_workers.application.clip_generation import ClipGenerationLimits, GenerateClipUseCase
 from vcut_workers.application.final_render import FinalRenderUseCase
+from vcut_workers.application.media_processing import (
+    ExtractAudioUseCase,
+    MediaPipelineCommand,
+    MediaProcessingLimits,
+)
 from vcut_workers.application.ports import MultimodalAnalyzer, SmartCropAnalyzer
 from vcut_workers.application.smart_reframing import SmartReframingAnalyzer
 from vcut_workers.application.transcription import TranscribeAudioUseCase, TranscriptionCommand
@@ -412,6 +417,25 @@ def create_transcription_worker(
     settings: WorkerSettings,
 ) -> RabbitMqWorker[TranscribeAudioCommand, TranscriptionResult]:
     storage = S3ObjectStorage(settings)
+    media_processor = FFmpegVideoProcessor(
+        settings.ffmpeg_binary,
+        execution_limits=FFmpegExecutionLimits(
+            timeout_seconds=settings.ffmpeg_timeout_seconds,
+            max_temp_bytes=settings.ffmpeg_max_temp_bytes,
+            max_memory_bytes=settings.ffmpeg_max_memory_bytes,
+        ),
+    )
+    audio_preparation = ExtractAudioUseCase(
+        storage,
+        media_processor,
+        MediaProcessingLimits(
+            max_input_size_bytes=settings.clip_max_input_size_bytes,
+            max_processing_seconds=settings.ffmpeg_timeout_seconds,
+            max_temp_bytes=settings.ffmpeg_max_temp_bytes,
+            max_memory_bytes=settings.ffmpeg_max_memory_bytes,
+        ),
+        retention_recorder=PostgresRetentionStore(settings),
+    )
     provider = (
         DeterministicTranscriptionProvider()
         if settings.transcription_provider == "fake"
@@ -425,6 +449,18 @@ def create_transcription_worker(
     )
 
     def transcribe(command: TranscribeAudioCommand) -> TranscriptionResult:
+        if command.source_object_key is not None:
+            if command.user_id is None or command.project_id is None:
+                raise ValueError("source audio preparation requires user and project identifiers")
+            audio_preparation.execute(
+                MediaPipelineCommand(
+                    user_id=command.user_id,
+                    project_id=command.project_id,
+                    video_id=command.video_id,
+                    pipeline_version=command.pipeline_version,
+                    source_object_key=command.source_object_key,
+                )
+            )
         return use_case.execute(
             TranscriptionCommand(
                 video_id=command.video_id,
@@ -594,9 +630,7 @@ def _multimodal_analyzer_for(settings: WorkerSettings) -> MultimodalAnalyzer | N
     return ResilientMultimodalAnalyzer(primary, TranscriptFallbackMultimodalAnalyzer())
 
 
-def _result_envelope(
-    envelope: MessageEnvelope, data: dict[str, object], event_type: str
-) -> bytes:
+def _result_envelope(envelope: MessageEnvelope, data: dict[str, object], event_type: str) -> bytes:
     result = MessageEnvelope.model_validate(
         {
             "kind": MessageKind.EVENT,

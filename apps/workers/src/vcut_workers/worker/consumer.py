@@ -4,7 +4,6 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import Generic, Protocol, TypeVar
-from uuid import UUID
 
 from opentelemetry import trace
 from opentelemetry.trace import SpanKind, Status, StatusCode
@@ -78,8 +77,8 @@ class StageRunUpdater(Protocol):
 
 
 class CommandEligibilityStore(Protocol):
-    def can_process(self, job_id: UUID) -> bool:
-        """Return whether the persisted job is still eligible for execution."""
+    def can_process(self, envelope: MessageEnvelope) -> bool:
+        """Return whether the command's persisted resource is eligible for execution."""
 
 
 class ConsumerStatus(StrEnum):
@@ -172,9 +171,8 @@ class ConsumerBase(Generic[CommandModelT, ResultModelT]):
         envelope: MessageEnvelope,
         command: CommandModelT,
     ) -> ConsumerOutcome[ResultModelT]:
-        if (
-            self._eligibility_store is not None
-            and not self._eligibility_store.can_process(envelope.job_id)
+        if self._eligibility_store is not None and not self._eligibility_store.can_process(
+            envelope
         ):
             await delivery.ack()
             return ConsumerOutcome(ConsumerStatus.CANCELLED)
@@ -247,7 +245,9 @@ class ConsumerBase(Generic[CommandModelT, ResultModelT]):
                 return await value
             return value
 
-        return await asyncio.wait_for(invoke(), timeout=self._timeout_seconds), tuple(progress_updates)
+        return await asyncio.wait_for(invoke(), timeout=self._timeout_seconds), tuple(
+            progress_updates
+        )
 
     async def _handle_failure(
         self,

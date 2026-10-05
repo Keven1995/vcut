@@ -85,6 +85,26 @@ class MessageEnvelopeTest {
   }
 
   @Test
+  void acceptsPipelineVersionTwoWithTheSupportedEnvelopeVersion() {
+    MessageEnvelope message =
+        new MessageEnvelope(
+            MessageKind.EVENT,
+            UUID.randomUUID(),
+            "VideoValidationCompleted",
+            1,
+            UUID.randomUUID(),
+            UUID.randomUUID(),
+            "VIDEO_VALIDATION",
+            2,
+            UUID.randomUUID(),
+            1,
+            java.time.Instant.now(),
+            Map.of());
+
+    MessageCompatibility.requireSupported(message);
+  }
+
+  @Test
   void roundTripsOptionalW3cTraceparentWithoutChangingTheCorrelationId() throws IOException {
     UUID correlationId = UUID.randomUUID();
     String traceparent = "00-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-bbbbbbbbbbbbbbbb-01";

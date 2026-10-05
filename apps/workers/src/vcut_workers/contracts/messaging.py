@@ -64,11 +64,11 @@ class MessageEnvelope(BaseModel):
     occurred_at: datetime = Field(alias="occurredAt")
     data: dict[str, object]
 
-    @field_validator("event_version", "version")
+    @field_validator("event_version")
     @classmethod
     def require_supported_version(cls, value: int) -> int:
         if value != 1:
-            raise ValueError("only message version 1 is supported")
+            raise ValueError("only envelope version 1 is supported")
         return value
 
 

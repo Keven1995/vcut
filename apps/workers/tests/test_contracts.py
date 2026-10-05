@@ -21,7 +21,7 @@ def test_shared_event_fixture_round_trips_with_optional_fields() -> None:
 
 
 def test_incompatible_version_is_rejected() -> None:
-    with pytest.raises(ValueError, match="only message version 1 is supported"):
+    with pytest.raises(ValueError, match="only envelope version 1 is supported"):
         MessageEnvelope.model_validate(
             {
                 "kind": "EVENT",
@@ -38,3 +38,25 @@ def test_incompatible_version_is_rejected() -> None:
                 "data": {},
             }
         )
+
+
+def test_pipeline_version_two_is_supported_with_envelope_version_one() -> None:
+    envelope = MessageEnvelope.model_validate(
+        {
+            "kind": "COMMAND",
+            "eventId": "11111111-1111-4111-8111-111111111111",
+            "eventType": "VideoValidationRequested",
+            "eventVersion": 1,
+            "jobId": "22222222-2222-4222-8222-222222222222",
+            "resourceId": "33333333-3333-4333-8333-333333333333",
+            "operation": "VIDEO_VALIDATION",
+            "version": 2,
+            "correlationId": "44444444-4444-4444-8444-444444444444",
+            "attempt": 1,
+            "occurredAt": "2026-09-28T12:00:00Z",
+            "data": {},
+        }
+    )
+
+    assert envelope.event_version == 1
+    assert envelope.version == 2

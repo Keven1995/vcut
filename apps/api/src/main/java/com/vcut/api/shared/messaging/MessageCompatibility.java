@@ -7,7 +7,7 @@ public final class MessageCompatibility {
   private MessageCompatibility() {}
 
   public static void requireSupported(MessageEnvelope message) {
-    if (message.eventVersion() != SUPPORTED_VERSION || message.version() != SUPPORTED_VERSION) {
+    if (message.eventVersion() != SUPPORTED_VERSION) {
       throw new UnsupportedMessageVersionException(
           message.eventType(), message.eventVersion(), message.version());
     }

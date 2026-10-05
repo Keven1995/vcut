@@ -150,10 +150,23 @@ class ExtractAudioUseCase:
         self._retention_recorder = retention_recorder
 
     def execute(self, command: MediaPipelineCommand) -> MediaStageResult:
-        input_key = artifact_key(command, "normalized", "video.mp4")
+        normalized_key = artifact_key(command, "normalized", "video.mp4")
+        input_key = (
+            normalized_key
+            if self._object_storage.head(normalized_key) is not None
+            else command.source_object_key
+        )
         output_key = artifact_key(command, "audio", "transcription.wav")
         existing = self._object_storage.head(output_key)
         if existing is not None:
+            if self._retention_recorder is not None:
+                self._retention_recorder.register(
+                    command.user_id,
+                    command.project_id,
+                    output_key,
+                    RetainedObjectKind.AUDIO,
+                    existing.content_length,
+                )
             return _result(
                 "EXTRACT_AUDIO",
                 command,
@@ -204,9 +217,7 @@ class ExtractAudioUseCase:
 
     def _download_input(self, object_key: str, destination: Path) -> None:
         if self._object_storage.head(object_key) is None:
-            raise MediaProcessingError(
-                "NORMALIZED_SOURCE_NOT_FOUND", "normalized media was not found"
-            )
+            raise MediaProcessingError("MEDIA_SOURCE_NOT_FOUND", "source media was not found")
         self._object_storage.download(object_key, destination)
 
 

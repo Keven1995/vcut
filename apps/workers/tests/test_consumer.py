@@ -95,8 +95,8 @@ class FakeCommandEligibilityStore:
     def __init__(self, eligible: bool) -> None:
         self.eligible = eligible
 
-    def can_process(self, job_id: UUID) -> bool:
-        assert job_id == JOB_ID
+    def can_process(self, envelope: MessageEnvelope) -> bool:
+        assert envelope.job_id == JOB_ID
         return self.eligible
 
 

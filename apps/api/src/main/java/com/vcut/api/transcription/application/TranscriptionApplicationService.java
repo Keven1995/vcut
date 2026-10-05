@@ -191,7 +191,10 @@ public class TranscriptionApplicationService {
             now,
             Map.of(
                 "videoId", videoId,
+                "userId", video.userId(),
+                "projectId", video.projectId(),
                 "pipelineVersion", version,
+                "sourceObjectKey", video.objectKey(),
                 "audioObjectKey", audioObjectKey(video, version),
                 "workerPriority", workerPriority(userId),
                 "language", language));
