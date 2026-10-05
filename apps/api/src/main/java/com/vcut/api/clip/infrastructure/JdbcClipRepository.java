@@ -55,7 +55,7 @@ public class JdbcClipRepository implements ClipRepository {
             + "development_score, payoff_score, independence_score, engagement_score, current_edit_version, "
             + "status, generation_progress, output_object_key, output_width, output_height, output_duration_seconds, "
             + "output_aspect_ratio, output_edit_version, error_code, error_message, created_at, updated_at) "
-            + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         clip.id(),
         clip.userId(),
         clip.projectId(),
@@ -89,7 +89,7 @@ public class JdbcClipRepository implements ClipRepository {
         "INSERT INTO clip_versions (id, clip_id, user_id, project_id, video_id, candidate_id, edit_version, "
             + "start_seconds, end_seconds, aspect_ratio, crop_x, crop_y, crop_zoom, caption_preset, font_family, font_size, font_weight, "
             + "text_color, background_color, background_opacity, caption_position, caption_animation, created_at) "
-            + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         version.id(),
         version.clipId(),
         version.userId(),
