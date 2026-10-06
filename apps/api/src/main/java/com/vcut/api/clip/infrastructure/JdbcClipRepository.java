@@ -199,11 +199,13 @@ public class JdbcClipRepository implements ClipRepository {
             : new Object[] {videoId, userId, status.name(), size, page * size};
     List<ClipAggregate> content =
         jdbcTemplate.query(
-            "SELECT "
-                + AGGREGATE_COLUMNS
-                + " FROM clips c JOIN clip_versions v ON v.clip_id = c.id AND v.edit_version = c.current_edit_version"
+            "WITH page AS MATERIALIZED (SELECT c.id, c.created_at FROM clips c"
                 + filter
-                + " ORDER BY c.created_at DESC, c.id LIMIT ? OFFSET ?",
+                + " ORDER BY c.created_at DESC, c.id LIMIT ? OFFSET ?) SELECT "
+                + AGGREGATE_COLUMNS
+                + " FROM page p JOIN clips c ON c.id = p.id JOIN clip_versions v "
+                + "ON v.clip_id = c.id AND v.edit_version = c.current_edit_version "
+                + "ORDER BY p.created_at DESC, p.id",
             (resultSet, rowNumber) -> mapAggregate(resultSet),
             queryArguments);
     return new ClipPage(content, page, size, total == null ? 0 : total);

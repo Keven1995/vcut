@@ -1,0 +1,30 @@
+{
+  "baselineVersion": "api-load-v1",
+  "runner": "ApiLoadProfileTest",
+  "environment": {
+    "database": "PostgreSQL 16.14 (Testcontainers)",
+    "docker": "27.2.0",
+    "java": "21.0.12",
+    "os": "Windows 11"
+  },
+  "sampleCount": 12,
+  "concurrentThreads": 6,
+  "historicalCompletedJobs": 20000,
+  "requests": {
+    "uploadAndConfirmP95Ms": 432.3077,
+    "processJobP95Ms": 84.441,
+    "jobQueryP95Ms": 11.7542,
+    "transcriptionRequestP95Ms": 153.987,
+    "clipAndRenderRequestP95Ms": 192.1564
+  },
+  "errors": 0,
+  "database": {
+    "sizeDeltaBytes": 589824,
+    "tupleDelta": 260,
+    "activeJobsQueryPlan": {
+      "index": "jobs_status_updated_at_idx",
+      "executionTimeMs": 0.056,
+      "measuredBeforeLoadRequests": true
+    }
+  }
+}

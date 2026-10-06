@@ -1,0 +1,74 @@
+{
+  "baselineVersion": "api-load-v2",
+  "runner": "ApiLoadProfileTest",
+  "environment": {
+    "database": "PostgreSQL 16.14 (Testcontainers)",
+    "docker": "27.2.0",
+    "java": "21.0.12",
+    "os": "Windows 11"
+  },
+  "sampleCount": 12,
+  "concurrentThreads": 6,
+  "historicalRows": {
+    "completedJobs": 20000,
+    "completedTranscriptions": 5000,
+    "completedClipAnalysisRuns": 5000,
+    "failedClipsWithVersions": 5000
+  },
+  "requestsAfterIndexes": {
+    "uploadAndConfirmP95Ms": 421.7827,
+    "processJobP95Ms": 47.8388,
+    "jobQueryP95Ms": 9.1569,
+    "clipPageP95Ms": 181.9754,
+    "transcriptionRequestP95Ms": 150.1967,
+    "clipAndRenderRequestP95Ms": 154.0176
+  },
+  "errors": 0,
+  "database": {
+    "sizeDeltaBytes": 516096,
+    "tupleDelta": 221
+  },
+  "activeWorkQuery": {
+    "beforeIndexes": {
+      "executionTimeMs": 1.8,
+      "sequentialScans": [
+        "transcriptions",
+        "clip_analysis_runs"
+      ],
+      "transcriptionsScanMs": 0.831,
+      "clipAnalysisScanMs": 0.618
+    },
+    "beforeClipActiveIndex": {
+      "executionTimeMs": 1.742,
+      "sequentialScan": "clips",
+      "clipsScanMs": 1.442
+    },
+    "afterIndexes": {
+      "executionTimeMs": 0.231,
+      "indexOnlyScans": [
+        "jobs_status_updated_at_idx",
+        "transcriptions_user_active_idx",
+        "clip_analysis_runs_user_active_idx",
+        "clips_user_active_idx",
+        "clip_renders_user_status_idx"
+      ]
+    },
+    "executionTimeReductionPercent": 86.7
+  },
+  "clipPaginationQuery": {
+    "page": 250,
+    "size": 10,
+    "executionTimeBeforeIndexMs": 1.547,
+    "executionTimeAfterIndexMs": 0.72,
+    "executionTimeReductionPercent": 53.5,
+    "afterPlanUses": [
+      "clips_user_video_page_idx",
+      "clips_id_user_unique",
+      "clip_versions_clip_version_idx"
+    ],
+    "apiP95BeforeMs": 180.3302,
+    "apiP95AfterMs": 181.9754,
+    "apiP95ChangePercent": 0.9,
+    "apiLatencyConclusion": "stable within measurement variance; database query plan improved"
+  }
+}
