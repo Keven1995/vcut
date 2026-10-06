@@ -395,9 +395,7 @@ def _composition_filter(composition: ClipComposition, sidecar_directory: Path) -
         sidecar = sidecar_directory / f"cue-{index:04d}.txt"
         sidecar.write_text(cue.text, encoding="utf-8")
         color = (
-            style.highlight_color
-            if style.animation is CaptionAnimation.KARAOKE
-            else style.color
+            style.highlight_color if style.animation is CaptionAnimation.KARAOKE else style.color
         )
         if style.position is CaptionPosition.TOP:
             y = "h*0.12"
@@ -435,18 +433,12 @@ def _caption_font_file(font: str, font_weight: int) -> Path:
             Path("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf")
             if bold
             else Path("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"),
-            Path("C:/Windows/Fonts/arialbd.ttf")
-            if bold
-            else Path("C:/Windows/Fonts/arial.ttf"),
-            Path("C:/Windows/Fonts/segoeuib.ttf")
-            if bold
-            else Path("C:/Windows/Fonts/segoeui.ttf"),
+            Path("C:/Windows/Fonts/arialbd.ttf") if bold else Path("C:/Windows/Fonts/arial.ttf"),
+            Path("C:/Windows/Fonts/segoeuib.ttf") if bold else Path("C:/Windows/Fonts/segoeui.ttf"),
         )
     elif font.lower() == "arial":
         candidates = (
-            Path("C:/Windows/Fonts/arialbd.ttf")
-            if bold
-            else Path("C:/Windows/Fonts/arial.ttf"),
+            Path("C:/Windows/Fonts/arialbd.ttf") if bold else Path("C:/Windows/Fonts/arial.ttf"),
             Path("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf")
             if bold
             else Path("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"),
@@ -456,9 +448,7 @@ def _caption_font_file(font: str, font_weight: int) -> Path:
             Path("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf")
             if bold
             else Path("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"),
-            Path("C:/Windows/Fonts/arialbd.ttf")
-            if bold
-            else Path("C:/Windows/Fonts/arial.ttf"),
+            Path("C:/Windows/Fonts/arialbd.ttf") if bold else Path("C:/Windows/Fonts/arial.ttf"),
         )
     for candidate in candidates:
         if candidate.is_file():

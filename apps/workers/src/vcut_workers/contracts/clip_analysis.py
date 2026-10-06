@@ -92,7 +92,10 @@ class AnalyzeClipsCommand(BaseModel):
             if segment.start_seconds < previous_end:
                 raise ValueError("transcript segments must be ordered")
             previous_end = segment.end_seconds
-        if self.duration_preference is DurationPreference.CUSTOM and self.custom_duration_seconds is None:
+        if (
+            self.duration_preference is DurationPreference.CUSTOM
+            and self.custom_duration_seconds is None
+        ):
             raise ValueError("custom duration is required for CUSTOM preference")
         return self
 

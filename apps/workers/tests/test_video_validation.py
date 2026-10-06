@@ -181,7 +181,9 @@ def test_validation_rejects_unsupported_codec() -> None:
 
 
 def test_validation_rejects_unsupported_file_extension() -> None:
-    storage = FakeStorage(ObjectMetadata(command(filename="original.exe").object_key, 8, "video/mp4"))
+    storage = FakeStorage(
+        ObjectMetadata(command(filename="original.exe").object_key, 8, "video/mp4")
+    )
     result = ValidateUploadedVideoUseCase(storage, FakeProcessor(metadata())).execute(
         command(filename="original.exe")
     )

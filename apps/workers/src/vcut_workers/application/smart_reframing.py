@@ -52,12 +52,8 @@ class TemporalFaceTracker:
             if prior is None:
                 smoothed = current
             else:
-                smoothed_x = (self._smoothing * current[0]) + (
-                    (1 - self._smoothing) * prior[0]
-                )
-                smoothed_y = (self._smoothing * current[1]) + (
-                    (1 - self._smoothing) * prior[1]
-                )
+                smoothed_x = (self._smoothing * current[0]) + ((1 - self._smoothing) * prior[0])
+                smoothed_y = (self._smoothing * current[1]) + ((1 - self._smoothing) * prior[1])
                 smoothed = (smoothed_x, smoothed_y)
             previous[track_id] = smoothed
             tracked.append(
@@ -101,7 +97,10 @@ class RelevantRegionSelector:
         ]
         if speaking_regions:
             return _crop_from_points(
-                ((region.center_x, region.center_y, region.confidence) for region in speaking_regions),
+                (
+                    (region.center_x, region.center_y, region.confidence)
+                    for region in speaking_regions
+                ),
                 fallback,
             )
         if faces:

@@ -106,7 +106,9 @@ class FinalRenderUseCase:
             thumbnail = Path(directory) / "thumbnail.jpg"
             self._object_storage.download(command.output_object_key, rendered)
             if not rendered.is_file() or rendered.stat().st_size == 0:
-                raise MediaProcessingError("FINAL_OUTPUT_NOT_FOUND", "final render output was not found")
+                raise MediaProcessingError(
+                    "FINAL_OUTPUT_NOT_FOUND", "final render output was not found"
+                )
             self._media_processor.thumbnail(
                 rendered,
                 thumbnail,

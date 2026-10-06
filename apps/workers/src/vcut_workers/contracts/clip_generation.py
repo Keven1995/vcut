@@ -29,20 +29,14 @@ class ClipGenerationCommand(BaseModel):
     video_id: Annotated[UUID, Field(alias="videoId")]
     pipeline_version: Annotated[int, Field(alias="pipelineVersion", ge=1)]
     edit_version: Annotated[int, Field(alias="editVersion", ge=1)]
-    source_object_key: Annotated[
-        str, Field(alias="sourceObjectKey", min_length=1, max_length=512)
-    ]
-    output_object_key: Annotated[
-        str, Field(alias="outputObjectKey", min_length=1, max_length=512)
-    ]
+    source_object_key: Annotated[str, Field(alias="sourceObjectKey", min_length=1, max_length=512)]
+    output_object_key: Annotated[str, Field(alias="outputObjectKey", min_length=1, max_length=512)]
     start_seconds: Annotated[float, Field(alias="startSeconds", ge=0)]
     end_seconds: Annotated[float, Field(alias="endSeconds", gt=0)]
     aspect_ratio: Annotated[AspectRatio, Field(alias="aspectRatio")]
     caption_preset: Annotated[CaptionPreset, Field(alias="captionPreset")]
     caption_style: Annotated[CaptionStyle, Field(alias="captionStyle")]
-    caption_cues: Annotated[
-        tuple[CaptionCue, ...], Field(alias="captionCues", min_length=0)
-    ] = ()
+    caption_cues: Annotated[tuple[CaptionCue, ...], Field(alias="captionCues", min_length=0)] = ()
     crop_settings: Annotated[CropSettings, Field(alias="cropSettings")] = Field(
         default_factory=CropSettings.centered
     )
@@ -69,6 +63,7 @@ class ClipGenerationCommand(BaseModel):
     def duration_seconds(self) -> float:
         return self.end_seconds - self.start_seconds
 
+
 class ClipGenerationResult(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True, populate_by_name=True)
 
@@ -82,8 +77,12 @@ class ClipGenerationResult(BaseModel):
     width: int = Field(ge=0)
     height: int = Field(ge=0)
     aspect_ratio: Annotated[AspectRatio, Field(alias="aspectRatio")]
-    error_code: Annotated[str | None, Field(alias="errorCode", pattern=r"^[A-Z0-9_]{1,128}$")] = None
-    error_message: Annotated[str | None, Field(alias="errorMessage", min_length=1, max_length=1_000)] = None
+    error_code: Annotated[str | None, Field(alias="errorCode", pattern=r"^[A-Z0-9_]{1,128}$")] = (
+        None
+    )
+    error_message: Annotated[
+        str | None, Field(alias="errorMessage", min_length=1, max_length=1_000)
+    ] = None
 
     @field_validator("output_object_key")
     @classmethod

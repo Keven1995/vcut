@@ -128,11 +128,7 @@ class VisualAnalysis:
 
     @classmethod
     def empty(cls, duration_seconds: float) -> "VisualAnalysis":
-        scenes = (
-            (SceneInterval(0, duration_seconds),)
-            if duration_seconds > 0
-            else ()
-        )
+        scenes = (SceneInterval(0, duration_seconds),) if duration_seconds > 0 else ()
         return cls(duration_seconds=duration_seconds, scenes=scenes)
 
 

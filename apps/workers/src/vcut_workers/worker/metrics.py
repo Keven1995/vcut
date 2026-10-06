@@ -9,10 +9,14 @@ WORKER_RETRIES = Counter(
     "vcut_worker_retries_total", "Worker command retries scheduled.", ("queue",)
 )
 WORKER_DEAD_LETTERS = Counter(
-    "vcut_worker_dead_letters_total", "Worker command deliveries sent to a dead-letter queue.", ("queue",)
+    "vcut_worker_dead_letters_total",
+    "Worker command deliveries sent to a dead-letter queue.",
+    ("queue",),
 )
 WORKER_DELIVERY_ERRORS = Counter(
-    "vcut_worker_delivery_errors_total", "Worker failures that returned deliveries to the broker.", ("queue",)
+    "vcut_worker_delivery_errors_total",
+    "Worker failures that returned deliveries to the broker.",
+    ("queue",),
 )
 WORKER_DURATION = Histogram(
     "vcut_worker_job_duration_seconds",

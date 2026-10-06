@@ -52,9 +52,7 @@ def evaluate_clip_analysis(
         has_candidate = result.has_reliable_candidate
         classification_matches += has_candidate == example.expected_has_reliable_candidate
         correct_candidates += len(result.candidates) >= example.expected_minimum_candidates
-        false_positives += int(
-            not example.expected_has_reliable_candidate and has_candidate
-        )
+        false_positives += int(not example.expected_has_reliable_candidate and has_candidate)
 
     count = len(examples)
     return OfflineEvaluationReport(

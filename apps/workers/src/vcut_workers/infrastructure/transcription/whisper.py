@@ -205,5 +205,7 @@ def _finite_number(value: object) -> float | None:
 
 
 def _average_confidence(words: tuple[dict[str, object], ...]) -> float | None:
-    values = [value for value in (word.get("confidence") for word in words) if isinstance(value, float)]
+    values = [
+        value for value in (word.get("confidence") for word in words) if isinstance(value, float)
+    ]
     return sum(values) / len(values) if values else None

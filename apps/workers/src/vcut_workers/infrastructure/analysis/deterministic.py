@@ -23,8 +23,7 @@ class DeterministicContentAnalyzer:
         reliable = tuple(
             segment
             for segment in segments
-            if _is_reliable(segment)
-            and segment.end_seconds <= command.duration_seconds
+            if _is_reliable(segment) and segment.end_seconds <= command.duration_seconds
         )
         candidates: list[ClipCandidate] = []
         for index, segment in enumerate(reliable):
@@ -73,7 +72,13 @@ class DeterministicContentAnalyzer:
                         internal_score=_internal_score(scores, end - start, command),
                     )
                 )
-        candidates.sort(key=lambda candidate: (-candidate.internal_score, candidate.start_seconds, candidate.variant.value))
+        candidates.sort(
+            key=lambda candidate: (
+                -candidate.internal_score,
+                candidate.start_seconds,
+                candidate.variant.value,
+            )
+        )
         return AnalysisProviderResponse(
             provider="deterministic",
             duration_seconds=command.duration_seconds,
@@ -97,7 +102,11 @@ class FallbackContentAnalyzer(DeterministicContentAnalyzer):
 def _is_reliable(segment: SemanticSegment) -> bool:
     text = segment.text.strip(" .,!?:;\t\n")
     duration = segment.end_seconds - segment.start_seconds
-    return len(text) >= 8 and duration >= 1.0 and (segment.confidence is None or segment.confidence >= 0.5)
+    return (
+        len(text) >= 8
+        and duration >= 1.0
+        and (segment.confidence is None or segment.confidence >= 0.5)
+    )
 
 
 def _scores(
@@ -141,7 +150,9 @@ def _scores(
     )
 
 
-def _internal_score(scores: CandidateScores, duration: float, command: AnalyzeClipsCommand) -> float:
+def _internal_score(
+    scores: CandidateScores, duration: float, command: AnalyzeClipsCommand
+) -> float:
     target = _target_seconds(command.duration_preference, command.custom_duration_seconds)
     duration_alignment = 0.75 if target is None else max(0.25, 1 - abs(duration - target) / target)
     return min(

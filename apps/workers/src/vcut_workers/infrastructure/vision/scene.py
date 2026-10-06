@@ -74,7 +74,9 @@ class FFmpegSceneDetector:
                 "VISION_TIME_LIMIT_EXCEEDED", "scene detection exceeded the configured time limit"
             ) from error
         except subprocess.CalledProcessError as error:
-            raise MediaProcessingError("SCENE_DETECTION_FAILED", "scene detection failed") from error
+            raise MediaProcessingError(
+                "SCENE_DETECTION_FAILED", "scene detection failed"
+            ) from error
 
         cuts = _parse_cuts(completed.stderr, interval_duration, self._max_cuts)
         boundaries = (0.0, *cuts, interval_duration)
@@ -83,7 +85,7 @@ class FFmpegSceneDetector:
                 start_seconds=start_seconds + left,
                 end_seconds=start_seconds + right,
             )
-        for left, right in zip(boundaries[:-1], boundaries[1:], strict=True)
+            for left, right in zip(boundaries[:-1], boundaries[1:], strict=True)
             if right > left
         )
 

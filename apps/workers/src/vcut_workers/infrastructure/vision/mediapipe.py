@@ -76,10 +76,10 @@ class MediaPipeFaceDetector:
             raise VisionProviderUnavailableError("OpenCV could not open the source")
         return (
             _Cv2Bindings(
-                position_milliseconds=cast(
-                    int, _dynamic_attr(cv2_module, "CAP_PROP_POS_MSEC")
+                position_milliseconds=cast(int, _dynamic_attr(cv2_module, "CAP_PROP_POS_MSEC")),
+                convert_color=cast(
+                    Callable[[object, int], object], _dynamic_attr(cv2_module, "cvtColor")
                 ),
-                convert_color=cast(Callable[[object, int], object], _dynamic_attr(cv2_module, "cvtColor")),
                 bgr_to_rgb=cast(int, _dynamic_attr(cv2_module, "COLOR_BGR2RGB")),
             ),
             capture,
@@ -90,7 +90,9 @@ class MediaPipeFaceDetector:
             mediapipe = import_module("mediapipe")
             solutions = _dynamic_attr(mediapipe, "solutions")
             face_detection = _dynamic_attr(solutions, "face_detection")
-            return cast(Callable[..., _FaceProcessor], _dynamic_attr(face_detection, "FaceDetection"))
+            return cast(
+                Callable[..., _FaceProcessor], _dynamic_attr(face_detection, "FaceDetection")
+            )
         except ImportError as error:
             raise VisionProviderUnavailableError("MediaPipe is not installed") from error
 

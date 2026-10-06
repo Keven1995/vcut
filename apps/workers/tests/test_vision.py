@@ -89,9 +89,7 @@ def test_visual_contract_rejects_non_monotonic_timestamps() -> None:
 
 
 def test_tracker_smooths_small_face_oscillations() -> None:
-    tracked = TemporalFaceTracker(smoothing=0.25).track(
-        (face(0, 0.7), face(1, 0.9), face(2, 0.7))
-    )
+    tracked = TemporalFaceTracker(smoothing=0.25).track((face(0, 0.7), face(1, 0.9), face(2, 0.7)))
 
     assert tracked[1].bounding_box.center_x == pytest.approx(0.75)
     assert tracked[2].bounding_box.center_x == pytest.approx(0.7375)
@@ -102,9 +100,7 @@ def test_selector_prioritizes_speaker_region_over_face() -> None:
     analysis = VisualAnalysis(
         duration_seconds=5,
         faces=(face(1, 0.2),),
-        regions=(
-            VisualRegion(1, 0.8, 0.4, 1, RegionKind.SPEAKER),
-        ),
+        regions=(VisualRegion(1, 0.8, 0.4, 1, RegionKind.SPEAKER),),
     )
 
     crop = RelevantRegionSelector().select(
@@ -151,7 +147,9 @@ class FakeFaceDetector:
         self.detections = detections
         self.timestamps: tuple[float, ...] = ()
 
-    def detect(self, source: Path, *, timestamps_seconds: tuple[float, ...]) -> tuple[FaceDetection, ...]:
+    def detect(
+        self, source: Path, *, timestamps_seconds: tuple[float, ...]
+    ) -> tuple[FaceDetection, ...]:
         del source
         self.timestamps = timestamps_seconds
         return self.detections
@@ -302,7 +300,9 @@ class FakeMediaProcessor:
             return VideoMetadata("mp4", 10, 1920, 1080, 30, True, "h264", "aac")
         return VideoMetadata("mp4", 3, 1080, 1920, 30, True, "h264", "aac")
 
-    def compose(self, source: Path, destination: Path, composition: ClipComposition) -> VideoMetadata:
+    def compose(
+        self, source: Path, destination: Path, composition: ClipComposition
+    ) -> VideoMetadata:
         del source
         self.compositions.append(composition)
         destination.write_bytes(b"rendered")

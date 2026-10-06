@@ -191,9 +191,11 @@ class GenerateClipUseCase:
             raise MediaProcessingError(
                 "CLIP_SAMPLE_ASPECT_RATIO_INVALID", "rendered clip sample aspect ratio is not 1:1"
             )
-        if not isfinite(metadata.duration_seconds) or abs(
-            metadata.duration_seconds - command.duration_seconds
-        ) > self._limits.duration_tolerance_seconds:
+        if (
+            not isfinite(metadata.duration_seconds)
+            or abs(metadata.duration_seconds - command.duration_seconds)
+            > self._limits.duration_tolerance_seconds
+        ):
             raise MediaProcessingError(
                 "CLIP_DURATION_MISMATCH", "rendered clip duration does not match the interval"
             )
@@ -229,9 +231,7 @@ class GenerateClipUseCase:
             )
 
 
-def _ready_result(
-    command: ClipGenerationCommand, metadata: VideoMetadata
-) -> ClipGenerationResult:
+def _ready_result(command: ClipGenerationCommand, metadata: VideoMetadata) -> ClipGenerationResult:
     return ClipGenerationResult(
         clip_id=command.clip_id,
         edit_version=command.edit_version,

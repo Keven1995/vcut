@@ -40,7 +40,10 @@ def segment_transcription(
         boundary = bool(current) and (
             start - current_end > pause_seconds
             or end - current_start > max_block_seconds
-            or (current[-1][1].text.rstrip().endswith((".", "!", "?")) and start - current_end >= 0.2)
+            or (
+                current[-1][1].text.rstrip().endswith((".", "!", "?"))
+                and start - current_end >= 0.2
+            )
         )
         if boundary:
             blocks.append(_semantic_segment(current, current_start, current_end))
