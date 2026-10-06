@@ -1,0 +1,51 @@
+{
+  "baselineVersion": "worker-baseline-v1",
+  "iterationsPerWorkload": 3,
+  "pythonVersion": "3.12.10",
+  "platform": "Windows-11-10.0.26200-SP0",
+  "ffmpegVersion": "ffmpeg version 9.0.2-full_build-www.gyan.dev",
+  "costRates": {
+    "cpuPerSecond": "0",
+    "transcriptionPerMinute": "0",
+    "cpuSecondsAreWallClockProxy": true,
+    "monetaryRatesConfigured": false
+  },
+  "workloads": [
+    {
+      "workloadId": "interview-horizontal-16x9",
+      "sampleCount": 3,
+      "firstCutP50Ms": 695.5665999557823,
+      "firstCutP95Ms": 786.4414000650868,
+      "renderP50Seconds": 0.22511869994923472,
+      "renderP95Seconds": 0.2389121000887826,
+      "throughputClipsPerMinute": 63.30962012878353,
+      "processingSecondsPerProcessedMinute": 9.477232666686177,
+      "estimatedCostPerProcessedMinute": 0.0,
+      "totalOutputBytes": 234465
+    },
+    {
+      "workloadId": "podcast-vertical-9x16",
+      "sampleCount": 3,
+      "firstCutP50Ms": 594.1693999338895,
+      "firstCutP95Ms": 792.8769000573084,
+      "renderP50Seconds": 0.21960309997666627,
+      "renderP95Seconds": 0.22844229999464005,
+      "throughputClipsPerMinute": 68.0573093935416,
+      "processingSecondsPerProcessedMinute": 8.81609933373208,
+      "estimatedCostPerProcessedMinute": 0.0,
+      "totalOutputBytes": 234948
+    },
+    {
+      "workloadId": "gameplay-horizontal-16x9",
+      "sampleCount": 3,
+      "firstCutP50Ms": 671.9127999385819,
+      "firstCutP95Ms": 680.288500036113,
+      "renderP50Seconds": 0.23395529994741082,
+      "renderP95Seconds": 0.23729479999747127,
+      "throughputClipsPerMinute": 66.36982884069063,
+      "processingSecondsPerProcessedMinute": 9.04025233273084,
+      "estimatedCostPerProcessedMinute": 0.0,
+      "totalOutputBytes": 243027
+    }
+  ]
+}

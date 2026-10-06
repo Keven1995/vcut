@@ -1,0 +1,30 @@
+{
+  "baselineVersion": "worker-baseline-v1",
+  "iterations": 3,
+  "workloads": [
+    {
+      "id": "interview-horizontal-16x9",
+      "width": 640,
+      "height": 360,
+      "durationSeconds": 6,
+      "frequencyHz": 440,
+      "outputAspectRatio": "9:16"
+    },
+    {
+      "id": "podcast-vertical-9x16",
+      "width": 360,
+      "height": 640,
+      "durationSeconds": 6,
+      "frequencyHz": 660,
+      "outputAspectRatio": "9:16"
+    },
+    {
+      "id": "gameplay-horizontal-16x9",
+      "width": 640,
+      "height": 360,
+      "durationSeconds": 6,
+      "frequencyHz": 880,
+      "outputAspectRatio": "16:9"
+    }
+  ]
+}
