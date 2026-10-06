@@ -16,6 +16,10 @@ def test_settings_are_loaded_from_environment(monkeypatch: MonkeyPatch) -> None:
     monkeypatch.setenv("POSTGRES_USER", "worker-test")
     monkeypatch.setenv("POSTGRES_PASSWORD", "worker-secret")
     monkeypatch.setenv("RABBITMQ_MAX_PRIORITY", "7")
+    monkeypatch.setenv("RABBITMQ_COMMAND_QUEUE", "vcut-test.commands.validation")
+    monkeypatch.setenv("WORKER_POOL", "render")
+    monkeypatch.setenv("WORKER_CONCURRENCY", "3")
+    monkeypatch.setenv("WORKER_PREFETCH_COUNT", "2")
 
     settings = WorkerSettings.from_environment()
 
@@ -29,6 +33,18 @@ def test_settings_are_loaded_from_environment(monkeypatch: MonkeyPatch) -> None:
     assert settings.postgres_username == "worker-test"
     assert settings.postgres_password == "worker-secret"
     assert settings.rabbitmq_max_priority == 7
+    assert settings.rabbitmq_command_queue == "vcut-test.commands.validation"
+    assert settings.worker_pool == "render"
+    assert settings.worker_concurrency == 3
+    assert settings.worker_prefetch_count == 2
+
+
+def test_worker_pool_and_concurrency_have_safe_defaults() -> None:
+    settings = WorkerSettings()
+
+    assert settings.worker_pool == "all"
+    assert settings.worker_concurrency == 1
+    assert settings.worker_prefetch_count == 1
 
 
 def test_clip_generation_defaults_match_api_messaging_contract() -> None:

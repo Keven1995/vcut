@@ -222,9 +222,27 @@ def test_pika_dead_letter_does_not_parse_an_invalid_envelope_again() -> None:
     assert len(channel.published) == 1
 
 
-def test_pika_retry_preserves_the_subscription_worker_priority() -> None:
+def test_pika_dead_letter_preserves_the_premium_plan_lane() -> None:
     channel = FakeChannel()
-    publisher = PikaPublisher(channel, WorkerSettings(rabbitmq_password="test"))
+    publisher = PikaPublisher(
+        channel,
+        WorkerSettings(rabbitmq_password="test"),
+        command_routing_key="pipeline.video.validate",
+    )
+    error = ProcessingErrorInfo(ErrorClassification.PERMANENT, "INVALID_MEDIA", "Unsupported media")
+
+    asyncio.run(publisher.publish_dead_letter(body(worker_priority=7), error))
+
+    assert channel.published[0]["routing_key"] == "pipeline.video.validate.premium"
+
+
+def test_pika_retry_preserves_premium_plan_lane_and_priority() -> None:
+    channel = FakeChannel()
+    publisher = PikaPublisher(
+        channel,
+        WorkerSettings(rabbitmq_password="test"),
+        command_routing_key="pipeline.video.validate",
+    )
     metadata = RetryMetadata(
         attempt=1,
         max_attempts=3,
@@ -238,6 +256,28 @@ def test_pika_retry_preserves_the_subscription_worker_priority() -> None:
 
     properties = cast(pika.BasicProperties, channel.published[0]["properties"])
     assert properties.priority == 7
+    assert channel.published[0]["routing_key"] == "pipeline.video.validate.premium"
+
+
+def test_pika_basic_retry_uses_the_basic_plan_lane() -> None:
+    channel = FakeChannel()
+    publisher = PikaPublisher(
+        channel,
+        WorkerSettings(rabbitmq_password="test"),
+        command_routing_key="pipeline.video.validate",
+    )
+    metadata = RetryMetadata(
+        attempt=1,
+        max_attempts=3,
+        next_attempt=2,
+        backoff_seconds=5,
+        error_code="TEMPORARY",
+        error_message="try again",
+    )
+
+    asyncio.run(publisher.publish_retry(body(worker_priority=0), metadata))
+
+    assert channel.published[0]["routing_key"] == "pipeline.video.validate"
 
 
 def test_pika_publishes_stage_updates_as_versioned_events() -> None:

@@ -9,6 +9,7 @@ import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.vcut.api.job.application.OutboxRepository;
@@ -44,6 +45,12 @@ class OutboxPublisherTest {
     publisher.publishPending();
 
     verify(repository).markPublished(eq(message.id()), any(Instant.class));
+    verify(rabbitTemplate)
+        .send(
+            eq(JobMessagingConfiguration.COMMAND_EXCHANGE),
+            eq("pipeline.video.validate"),
+            any(Message.class),
+            any(CorrelationData.class));
   }
 
   @Test
@@ -79,10 +86,17 @@ class OutboxPublisherTest {
 
     org.mockito.ArgumentCaptor<Message> messageCaptor =
         org.mockito.ArgumentCaptor.forClass(Message.class);
+    org.mockito.ArgumentCaptor<String> routingKeyCaptor =
+        org.mockito.ArgumentCaptor.forClass(String.class);
     verify(rabbitTemplate)
-        .send(anyString(), anyString(), messageCaptor.capture(), any(CorrelationData.class));
+        .send(
+            anyString(),
+            routingKeyCaptor.capture(),
+            messageCaptor.capture(),
+            any(CorrelationData.class));
     MessageProperties properties = messageCaptor.getValue().getMessageProperties();
     org.assertj.core.api.Assertions.assertThat(properties.getPriority()).isEqualTo(7);
+    assertThat(routingKeyCaptor.getValue()).isEqualTo("pipeline.video.validate.premium");
   }
 
   private static OutboxMessage message() {

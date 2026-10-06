@@ -62,11 +62,16 @@ public class OutboxPublisher {
       MessageProperties properties = new MessageProperties();
       properties.setContentType(MessageProperties.CONTENT_TYPE_JSON);
       properties.setDeliveryMode(MessageDeliveryMode.PERSISTENT);
-      properties.setPriority(priority(message.payload()));
+      int workerPriority = priority(message.payload());
+      properties.setPriority(workerPriority);
+      String routingKey =
+          workerPriority > 0
+              ? JobMessagingConfiguration.premiumLaneRoutingKey(message.routingKey())
+              : message.routingKey();
       CorrelationData correlation = new CorrelationData(message.id().toString());
       rabbitTemplate.send(
           JobMessagingConfiguration.COMMAND_EXCHANGE,
-          message.routingKey(),
+          routingKey,
           new Message(message.payload().getBytes(StandardCharsets.UTF_8), properties),
           correlation);
       CorrelationData.Confirm confirm = correlation.getFuture().get(10, TimeUnit.SECONDS);

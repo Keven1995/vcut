@@ -70,6 +70,7 @@ from vcut_workers.worker.consumer import (
     RetryPublisher,
 )
 from vcut_workers.worker.errors import ProcessingErrorInfo
+from vcut_workers.worker.fair_scheduling import PlanLaneScheduler, premium_lane_name
 from vcut_workers.worker.metrics import (
     WORKER_IN_PROGRESS,
     record_worker_delivery,
@@ -123,7 +124,7 @@ class PikaPublisher(RetryPublisher, ResultPublisher):
     async def publish_retry(self, body: bytes, metadata: RetryMetadata) -> None:
         self._channel.basic_publish(
             exchange=self._settings.rabbitmq_retry_exchange,
-            routing_key=self._command_routing_key,
+            routing_key=self._plan_lane_routing_key(body),
             body=body,
             properties=pika.BasicProperties(
                 content_type="application/json",
@@ -136,7 +137,7 @@ class PikaPublisher(RetryPublisher, ResultPublisher):
     async def publish_dead_letter(self, body: bytes, error: ProcessingErrorInfo) -> None:
         self._channel.basic_publish(
             exchange=self._settings.rabbitmq_dead_letter_exchange,
-            routing_key=self._command_routing_key,
+            routing_key=self._plan_lane_routing_key(body),
             body=body,
             properties=pika.BasicProperties(
                 content_type="application/json",
@@ -267,6 +268,11 @@ class PikaPublisher(RetryPublisher, ResultPublisher):
             return 0
         return priority
 
+    def _plan_lane_routing_key(self, body: bytes) -> str:
+        if self._worker_priority(body) > 0:
+            return premium_lane_name(self._command_routing_key)
+        return self._command_routing_key
+
 
 class RabbitMqWorker(Generic[CommandModelT, ResultModelT]):
     def __init__(
@@ -316,13 +322,24 @@ class RabbitMqWorker(Generic[CommandModelT, ResultModelT]):
         connection = pika.BlockingConnection(parameters)
         channel = connection.channel()
         channel.confirm_delivery()
-        channel.basic_qos(prefetch_count=1)
+        channel.basic_qos(prefetch_count=self._settings.worker_prefetch_count)
         channel.queue_declare(
             queue=self._command_queue,
             durable=True,
             arguments={
                 "x-dead-letter-exchange": self._settings.rabbitmq_dead_letter_exchange,
                 "x-dead-letter-routing-key": self._command_routing_key,
+                "x-max-priority": self._settings.rabbitmq_max_priority,
+            },
+        )
+        premium_queue = premium_lane_name(self._command_queue)
+        premium_routing_key = premium_lane_name(self._command_routing_key)
+        channel.queue_declare(
+            queue=premium_queue,
+            durable=True,
+            arguments={
+                "x-dead-letter-exchange": self._settings.rabbitmq_dead_letter_exchange,
+                "x-dead-letter-routing-key": premium_routing_key,
                 "x-max-priority": self._settings.rabbitmq_max_priority,
             },
         )
@@ -349,26 +366,29 @@ class RabbitMqWorker(Generic[CommandModelT, ResultModelT]):
             queue_name=self._command_queue,
         )
 
+        scheduler = PlanLaneScheduler(self._command_queue, premium_queue)
+
         def on_message(
             current_channel: pika.adapters.blocking_connection.BlockingChannel,
             method: pika.spec.Basic.Deliver,
             properties: pika.BasicProperties,
             body: bytes,
+            queue_name: str,
         ) -> None:
             del properties
             delivery = PikaDelivery(current_channel, body, method.delivery_tag)
             started_at = time.perf_counter()
-            WORKER_IN_PROGRESS.labels(queue=self._command_queue).inc()
+            WORKER_IN_PROGRESS.labels(queue=queue_name).inc()
             try:
                 outcome = asyncio.run(consumer.consume(delivery))
                 record_worker_delivery(
-                    self._command_queue,
+                    queue_name,
                     outcome.status.value,
                     time.perf_counter() - started_at,
                 )
             except Exception as exception:
                 record_worker_delivery(
-                    self._command_queue,
+                    queue_name,
                     "DELIVERY_ERROR",
                     time.perf_counter() - started_at,
                 )
@@ -378,14 +398,36 @@ class RabbitMqWorker(Generic[CommandModelT, ResultModelT]):
                 except pika.exceptions.AMQPError:
                     LOGGER.exception("worker_delivery_requeue_failed")
             finally:
-                WORKER_IN_PROGRESS.labels(queue=self._command_queue).dec()
+                WORKER_IN_PROGRESS.labels(queue=queue_name).dec()
 
         channel.basic_consume(
             queue=self._command_queue,
-            on_message_callback=on_message,
+            on_message_callback=lambda current_channel, method, properties, body: scheduler.enqueue(
+                self._command_queue, method, properties, body
+            ),
             auto_ack=False,
         )
-        channel.start_consuming()
+        channel.basic_consume(
+            queue=premium_queue,
+            on_message_callback=lambda current_channel, method, properties, body: scheduler.enqueue(
+                premium_queue, method, properties, body
+            ),
+            auto_ack=False,
+        )
+        while connection.is_open:
+            pending = scheduler.next_delivery()
+            if pending is None:
+                connection.process_data_events(time_limit=0.1)
+                pending = scheduler.next_delivery()
+            if pending is None:
+                continue
+            on_message(
+                channel,
+                pending.method,
+                pending.properties,
+                pending.body,
+                pending.queue_name,
+            )
 
 
 def create_video_validation_worker(

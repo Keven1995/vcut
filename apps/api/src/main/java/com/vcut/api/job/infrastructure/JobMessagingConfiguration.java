@@ -2,6 +2,8 @@ package com.vcut.api.job.infrastructure;
 
 import org.springframework.amqp.core.Binding;
 import org.springframework.amqp.core.BindingBuilder;
+import org.springframework.amqp.core.Declarable;
+import org.springframework.amqp.core.Declarables;
 import org.springframework.amqp.core.DirectExchange;
 import org.springframework.amqp.core.Queue;
 import org.springframework.amqp.core.QueueBuilder;
@@ -17,6 +19,8 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.scheduling.annotation.EnableScheduling;
+import java.util.ArrayList;
+import java.util.List;
 
 @Configuration
 @EnableScheduling
@@ -59,6 +63,31 @@ public class JobMessagingConfiguration {
       "pipeline.video.clip-generation.completed";
   public static final String FINAL_RENDER_RESULT_ROUTING_KEY =
       "pipeline.video.final-render.completed";
+  public static final String PREMIUM_LANE_SUFFIX = ".premium";
+
+  private static final List<CommandTopology> COMMAND_TOPOLOGY =
+      List.of(
+          new CommandTopology(COMMAND_QUEUE, COMMAND_ROUTING_KEY, RETRY_QUEUE, DEAD_LETTER_QUEUE),
+          new CommandTopology(
+              TRANSCRIPTION_COMMAND_QUEUE,
+              TRANSCRIPTION_COMMAND_ROUTING_KEY,
+              TRANSCRIPTION_RETRY_QUEUE,
+              TRANSCRIPTION_DEAD_LETTER_QUEUE),
+          new CommandTopology(
+              CLIP_ANALYSIS_COMMAND_QUEUE,
+              CLIP_ANALYSIS_COMMAND_ROUTING_KEY,
+              CLIP_ANALYSIS_RETRY_QUEUE,
+              CLIP_ANALYSIS_DEAD_LETTER_QUEUE),
+          new CommandTopology(
+              CLIP_GENERATION_COMMAND_QUEUE,
+              CLIP_GENERATION_COMMAND_ROUTING_KEY,
+              CLIP_GENERATION_RETRY_QUEUE,
+              CLIP_GENERATION_DEAD_LETTER_QUEUE),
+          new CommandTopology(
+              FINAL_RENDER_COMMAND_QUEUE,
+              FINAL_RENDER_COMMAND_ROUTING_KEY,
+              FINAL_RENDER_RETRY_QUEUE,
+              FINAL_RENDER_DEAD_LETTER_QUEUE));
 
   @Bean
   DirectExchange commandExchange() {
@@ -78,6 +107,17 @@ public class JobMessagingConfiguration {
   @Bean
   DirectExchange resultExchange() {
     return new DirectExchange(RESULT_EXCHANGE, true, false);
+  }
+
+  @Bean
+  Declarables premiumPlanLaneTopology(
+      @Value("${vcut.messaging.max-priority:10}") int maxPriority) {
+    int validatedMaxPriority = validateMaxPriority(maxPriority);
+    List<Declarable> declarations = new ArrayList<>();
+    for (CommandTopology topology : COMMAND_TOPOLOGY) {
+      addPremiumPlanLane(declarations, topology, validatedMaxPriority);
+    }
+    return new Declarables(declarations);
   }
 
   @Bean
@@ -456,4 +496,48 @@ public class JobMessagingConfiguration {
     }
     return maxPriority;
   }
+
+  public static String premiumLaneQueueName(String basicQueueName) {
+    return basicQueueName + PREMIUM_LANE_SUFFIX;
+  }
+
+  public static String premiumLaneRoutingKey(String basicRoutingKey) {
+    return basicRoutingKey + PREMIUM_LANE_SUFFIX;
+  }
+
+  private static void addPremiumPlanLane(
+      List<Declarable> declarations, CommandTopology topology, int maxPriority) {
+    String routingKey = premiumLaneRoutingKey(topology.basicRoutingKey());
+    Queue premiumCommandQueue =
+        QueueBuilder.durable(premiumLaneQueueName(topology.basicQueue()))
+            .deadLetterExchange(DEAD_LETTER_EXCHANGE)
+            .deadLetterRoutingKey(routingKey)
+            .maxPriority(maxPriority)
+            .build();
+    Queue premiumRetryQueue =
+        QueueBuilder.durable(premiumLaneQueueName(topology.basicRetryQueue()))
+            .ttl(300_000)
+            .deadLetterExchange(COMMAND_EXCHANGE)
+            .deadLetterRoutingKey(routingKey)
+            .maxPriority(maxPriority)
+            .build();
+    Queue deadLetterQueue = QueueBuilder.durable(topology.deadLetterQueue()).build();
+    declarations.add(premiumCommandQueue);
+    declarations.add(
+        BindingBuilder.bind(premiumCommandQueue)
+            .to(new DirectExchange(COMMAND_EXCHANGE, true, false))
+            .with(routingKey));
+    declarations.add(premiumRetryQueue);
+    declarations.add(
+        BindingBuilder.bind(premiumRetryQueue)
+            .to(new DirectExchange(RETRY_EXCHANGE, true, false))
+            .with(routingKey));
+    declarations.add(
+        BindingBuilder.bind(deadLetterQueue)
+            .to(new DirectExchange(DEAD_LETTER_EXCHANGE, true, false))
+            .with(routingKey));
+  }
+
+  private record CommandTopology(
+      String basicQueue, String basicRoutingKey, String basicRetryQueue, String deadLetterQueue) {}
 }

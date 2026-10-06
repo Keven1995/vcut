@@ -3,6 +3,7 @@ package com.vcut.api.job.infrastructure;
 import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.binder.MeterBinder;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
@@ -19,26 +20,44 @@ import org.springframework.stereotype.Component;
 public class RabbitQueueMetrics implements MeterBinder {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(RabbitQueueMetrics.class);
-  private static final Map<String, String> QUEUES =
+  private static final Map<String, List<String>> QUEUES =
       Map.ofEntries(
-          Map.entry("command.video-validation", JobMessagingConfiguration.COMMAND_QUEUE),
-          Map.entry("command.transcription", JobMessagingConfiguration.TRANSCRIPTION_COMMAND_QUEUE),
-          Map.entry("command.clip-analysis", JobMessagingConfiguration.CLIP_ANALYSIS_COMMAND_QUEUE),
           Map.entry(
-              "command.clip-generation", JobMessagingConfiguration.CLIP_GENERATION_COMMAND_QUEUE),
-          Map.entry("command.final-render", JobMessagingConfiguration.FINAL_RENDER_COMMAND_QUEUE),
-          Map.entry("retry.video-validation", JobMessagingConfiguration.RETRY_QUEUE),
-          Map.entry("retry.transcription", JobMessagingConfiguration.TRANSCRIPTION_RETRY_QUEUE),
-          Map.entry("retry.clip-analysis", JobMessagingConfiguration.CLIP_ANALYSIS_RETRY_QUEUE),
-          Map.entry("retry.clip-generation", JobMessagingConfiguration.CLIP_GENERATION_RETRY_QUEUE),
-          Map.entry("retry.final-render", JobMessagingConfiguration.FINAL_RENDER_RETRY_QUEUE),
-          Map.entry("dlq.video-validation", JobMessagingConfiguration.DEAD_LETTER_QUEUE),
-          Map.entry("dlq.transcription", JobMessagingConfiguration.TRANSCRIPTION_DEAD_LETTER_QUEUE),
-          Map.entry("dlq.clip-analysis", JobMessagingConfiguration.CLIP_ANALYSIS_DEAD_LETTER_QUEUE),
+              "command.video-validation",
+              planLanes(JobMessagingConfiguration.COMMAND_QUEUE)),
           Map.entry(
-              "dlq.clip-generation", JobMessagingConfiguration.CLIP_GENERATION_DEAD_LETTER_QUEUE),
-          Map.entry("dlq.final-render", JobMessagingConfiguration.FINAL_RENDER_DEAD_LETTER_QUEUE),
-          Map.entry("result.api", JobMessagingConfiguration.RESULT_QUEUE));
+              "command.transcription",
+              planLanes(JobMessagingConfiguration.TRANSCRIPTION_COMMAND_QUEUE)),
+          Map.entry(
+              "command.clip-analysis",
+              planLanes(JobMessagingConfiguration.CLIP_ANALYSIS_COMMAND_QUEUE)),
+          Map.entry(
+              "command.clip-generation",
+              planLanes(JobMessagingConfiguration.CLIP_GENERATION_COMMAND_QUEUE)),
+          Map.entry(
+              "command.final-render", planLanes(JobMessagingConfiguration.FINAL_RENDER_COMMAND_QUEUE)),
+          Map.entry("retry.video-validation", planLanes(JobMessagingConfiguration.RETRY_QUEUE)),
+          Map.entry(
+              "retry.transcription",
+              planLanes(JobMessagingConfiguration.TRANSCRIPTION_RETRY_QUEUE)),
+          Map.entry(
+              "retry.clip-analysis", planLanes(JobMessagingConfiguration.CLIP_ANALYSIS_RETRY_QUEUE)),
+          Map.entry(
+              "retry.clip-generation",
+              planLanes(JobMessagingConfiguration.CLIP_GENERATION_RETRY_QUEUE)),
+          Map.entry(
+              "retry.final-render", planLanes(JobMessagingConfiguration.FINAL_RENDER_RETRY_QUEUE)),
+          Map.entry("dlq.video-validation", List.of(JobMessagingConfiguration.DEAD_LETTER_QUEUE)),
+          Map.entry(
+              "dlq.transcription", List.of(JobMessagingConfiguration.TRANSCRIPTION_DEAD_LETTER_QUEUE)),
+          Map.entry(
+              "dlq.clip-analysis", List.of(JobMessagingConfiguration.CLIP_ANALYSIS_DEAD_LETTER_QUEUE)),
+          Map.entry(
+              "dlq.clip-generation",
+              List.of(JobMessagingConfiguration.CLIP_GENERATION_DEAD_LETTER_QUEUE)),
+          Map.entry(
+              "dlq.final-render", List.of(JobMessagingConfiguration.FINAL_RENDER_DEAD_LETTER_QUEUE)),
+          Map.entry("result.api", List.of(JobMessagingConfiguration.RESULT_QUEUE)));
 
   private final RabbitAdmin rabbitAdmin;
   private final Map<String, QueueStats> queueStats =
@@ -71,11 +90,22 @@ public class RabbitQueueMetrics implements MeterBinder {
   @Scheduled(fixedDelayString = "${vcut.messaging.metrics-poll-interval-ms:15000}")
   public void refresh() {
     try {
-      for (Map.Entry<String, String> queue : QUEUES.entrySet()) {
-        QueueInformation information = rabbitAdmin.getQueueInfo(queue.getValue());
+      for (Map.Entry<String, List<String>> queue : QUEUES.entrySet()) {
         QueueStats stats = queueStats.get(queue.getKey());
-        stats.messages.set(information == null ? -1 : information.getMessageCount());
-        stats.consumers.set(information == null ? -1 : information.getConsumerCount());
+        long messages = 0;
+        long consumers = 0;
+        boolean queueUnavailable = false;
+        for (String queueName : queue.getValue()) {
+          QueueInformation information = rabbitAdmin.getQueueInfo(queueName);
+          if (information == null) {
+            queueUnavailable = true;
+            break;
+          }
+          messages += information.getMessageCount();
+          consumers += information.getConsumerCount();
+        }
+        stats.messages.set(queueUnavailable ? -1 : messages);
+        stats.consumers.set(queueUnavailable ? -1 : consumers);
       }
       available.set(true);
     } catch (RuntimeException failure) {
@@ -97,5 +127,9 @@ public class RabbitQueueMetrics implements MeterBinder {
   private static final class QueueStats {
     private final AtomicLong messages = new AtomicLong(-1);
     private final AtomicLong consumers = new AtomicLong(-1);
+  }
+
+  private static List<String> planLanes(String basicQueue) {
+    return List.of(basicQueue, JobMessagingConfiguration.premiumLaneQueueName(basicQueue));
   }
 }

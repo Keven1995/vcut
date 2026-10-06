@@ -1,3 +1,66 @@
+x-worker-environment: &worker-environment
+  APP_ENV: ${APP_ENV:-local}
+  WORKER_CONSUME: "true"
+  WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-1}
+  WORKER_PREFETCH_COUNT: ${WORKER_PREFETCH_COUNT:-1}
+  WORKER_HEALTH_PORT: "8090"
+  POSTGRES_HOST: postgres
+  POSTGRES_PORT: "5432"
+  POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB is required}
+  POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER is required}
+  POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+  RABBITMQ_HOST: rabbitmq
+  RABBITMQ_PORT: "5672"
+  RABBITMQ_USER: ${RABBITMQ_USER:?RABBITMQ_USER is required}
+  RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD is required}
+  RABBITMQ_COMMAND_QUEUE: ${RABBITMQ_COMMAND_QUEUE:-vcut.pipeline.commands.video-validation}
+  RABBITMQ_TRANSCRIPTION_QUEUE: ${RABBITMQ_TRANSCRIPTION_QUEUE:-vcut.pipeline.commands.transcription}
+  RABBITMQ_CLIP_ANALYSIS_QUEUE: ${RABBITMQ_CLIP_ANALYSIS_QUEUE:-vcut.pipeline.commands.clip-analysis}
+  RABBITMQ_CLIP_GENERATION_QUEUE: ${RABBITMQ_CLIP_GENERATION_QUEUE:-vcut.pipeline.commands.clip-generation}
+  RABBITMQ_FINAL_RENDER_QUEUE: ${RABBITMQ_FINAL_RENDER_QUEUE:-vcut.pipeline.commands.final-render}
+  OBJECT_STORAGE_ENDPOINT: http://minio:9000
+  OBJECT_STORAGE_HEALTH_URL: http://minio:9000/minio/health/live
+  OBJECT_STORAGE_BUCKET: ${OBJECT_STORAGE_BUCKET:-vcut-local}
+  OBJECT_STORAGE_ACCESS_KEY: ${OBJECT_STORAGE_ACCESS_KEY:-}
+  OBJECT_STORAGE_SECRET_KEY: ${OBJECT_STORAGE_SECRET_KEY:-}
+  OBJECT_STORAGE_PATH_STYLE: ${OBJECT_STORAGE_PATH_STYLE:-true}
+  FFMPEG_BINARY: ${FFMPEG_BINARY:-ffmpeg}
+  FFMPEG_TIMEOUT_SECONDS: ${FFMPEG_TIMEOUT_SECONDS:-900}
+  FFMPEG_MAX_TEMP_BYTES: ${FFMPEG_MAX_TEMP_BYTES:-4294967296}
+  FFMPEG_MAX_MEMORY_BYTES: ${FFMPEG_MAX_MEMORY_BYTES:-1073741824}
+  MULTIMODAL_ANALYSIS: ${MULTIMODAL_ANALYSIS:-false}
+  MULTIMODAL_ANALYSIS_PROVIDER: ${MULTIMODAL_ANALYSIS_PROVIDER:-deterministic}
+  AI_SMART_CROP: ${AI_SMART_CROP:-false}
+  FACE_TRACKING: ${FACE_TRACKING:-false}
+  VISION_PROVIDER: ${VISION_PROVIDER:-deterministic}
+  CLIP_GENERATION_ENABLED: ${CLIP_GENERATION_ENABLED:-true}
+
+x-worker-common: &worker-common
+  build:
+    context: .
+    dockerfile: infrastructure/docker/workers.Dockerfile
+  restart: unless-stopped
+  environment: *worker-environment
+  depends_on:
+    postgres:
+      condition: service_healthy
+    rabbitmq:
+      condition: service_healthy
+    minio:
+      condition: service_healthy
+  healthcheck:
+    test:
+      - CMD
+      - python
+      - -c
+      - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8090/health/ready', timeout=5)"
+    interval: 10s
+    timeout: 6s
+    retries: 6
+    start_period: 15s
+  networks:
+    - vcut-local
+
 services:
   postgres:
     image: vcut/postgres:16.14-alpine3.22
@@ -68,6 +131,38 @@ services:
       retries: 12
     networks:
       - vcut-local
+
+  workers-cpu:
+    <<: *worker-common
+    profiles: [workers-cpu, worker-pools]
+    environment:
+      <<: *worker-environment
+      WORKER_NAME: vcut-worker-cpu
+      WORKER_POOL: cpu
+
+  workers-ai:
+    <<: *worker-common
+    profiles: [workers-ai, worker-pools]
+    environment:
+      <<: *worker-environment
+      WORKER_NAME: vcut-worker-ai
+      WORKER_POOL: ai
+
+  workers-vision:
+    <<: *worker-common
+    profiles: [workers-vision, worker-pools]
+    environment:
+      <<: *worker-environment
+      WORKER_NAME: vcut-worker-vision
+      WORKER_POOL: vision
+
+  workers-render:
+    <<: *worker-common
+    profiles: [workers-render, worker-pools]
+    environment:
+      <<: *worker-environment
+      WORKER_NAME: vcut-worker-render
+      WORKER_POOL: render
 
 volumes:
   postgres_data:

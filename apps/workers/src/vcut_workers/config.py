@@ -42,6 +42,9 @@ class WorkerSettings(BaseModel):
 
     environment: str = Field(default="local", min_length=1)
     worker_name: str = Field(default="vcut-worker", min_length=1)
+    worker_pool: Literal["all", "cpu", "ai", "vision", "render"] = "all"
+    worker_concurrency: int = Field(default=1, ge=1, le=32)
+    worker_prefetch_count: int = Field(default=1, ge=1, le=64)
     ffmpeg_binary: str = Field(default="ffmpeg", min_length=1)
     ffmpeg_timeout_seconds: float = Field(default=900, gt=0)
     ffmpeg_max_temp_bytes: int = Field(default=4_294_967_296, gt=0)
@@ -123,9 +126,7 @@ class WorkerSettings(BaseModel):
     vision_max_frames: int = Field(default=180, gt=0)
     vision_face_confidence: float = Field(default=0.5, gt=0, le=1)
     multimodal_analysis_enabled: bool = False
-    multimodal_analysis_provider: Literal["deterministic", "transcript-fallback"] = (
-        "deterministic"
-    )
+    multimodal_analysis_provider: Literal["deterministic", "transcript-fallback"] = "deterministic"
     face_tracking_enabled: bool = False
     auto_zoom_enabled: bool = False
     retention_cleanup_enabled: bool = False
@@ -140,6 +141,12 @@ class WorkerSettings(BaseModel):
         return cls(
             environment=os.getenv("APP_ENV", "local"),
             worker_name=os.getenv("WORKER_NAME", "vcut-worker"),
+            worker_pool=cast(
+                Literal["all", "cpu", "ai", "vision", "render"],
+                os.getenv("WORKER_POOL", "all"),
+            ),
+            worker_concurrency=int(os.getenv("WORKER_CONCURRENCY", "1")),
+            worker_prefetch_count=int(os.getenv("WORKER_PREFETCH_COUNT", "1")),
             ffmpeg_binary=os.getenv("FFMPEG_BINARY", "ffmpeg"),
             ffmpeg_timeout_seconds=float(os.getenv("FFMPEG_TIMEOUT_SECONDS", "900")),
             ffmpeg_max_temp_bytes=int(os.getenv("FFMPEG_MAX_TEMP_BYTES", "4294967296")),
@@ -156,6 +163,9 @@ class WorkerSettings(BaseModel):
             rabbitmq_password=os.getenv("RABBITMQ_PASSWORD", ""),
             rabbitmq_virtual_host=os.getenv("RABBITMQ_VHOST", "/"),
             rabbitmq_max_priority=int(os.getenv("RABBITMQ_MAX_PRIORITY", "10")),
+            rabbitmq_command_queue=os.getenv(
+                "RABBITMQ_COMMAND_QUEUE", "vcut.pipeline.commands.video-validation"
+            ),
             rabbitmq_transcription_queue=os.getenv(
                 "RABBITMQ_TRANSCRIPTION_QUEUE", "vcut.pipeline.commands.transcription"
             ),
@@ -208,9 +218,7 @@ class WorkerSettings(BaseModel):
                 os.getenv("CONTENT_ANALYSIS_PROVIDER", "deterministic"),
             ),
             clip_generation_enabled=os.getenv("CLIP_GENERATION_ENABLED", "true").lower() == "true",
-            clip_max_input_size_bytes=int(
-                os.getenv("CLIP_MAX_INPUT_SIZE_BYTES", "2147483648")
-            ),
+            clip_max_input_size_bytes=int(os.getenv("CLIP_MAX_INPUT_SIZE_BYTES", "2147483648")),
             clip_max_duration_seconds=float(os.getenv("CLIP_MAX_DURATION_SECONDS", "90")),
             clip_duration_tolerance_seconds=float(
                 os.getenv("CLIP_DURATION_TOLERANCE_SECONDS", "0.1")
@@ -229,13 +237,10 @@ class WorkerSettings(BaseModel):
                 os.getenv("VISION_PROVIDER", "deterministic"),
             ),
             vision_scene_threshold=float(os.getenv("VISION_SCENE_THRESHOLD", "0.4")),
-            vision_frame_interval_seconds=float(
-                os.getenv("VISION_FRAME_INTERVAL_SECONDS", "1")
-            ),
+            vision_frame_interval_seconds=float(os.getenv("VISION_FRAME_INTERVAL_SECONDS", "1")),
             vision_max_frames=int(os.getenv("VISION_MAX_FRAMES", "180")),
             vision_face_confidence=float(os.getenv("VISION_FACE_CONFIDENCE", "0.5")),
-            multimodal_analysis_enabled=os.getenv("MULTIMODAL_ANALYSIS", "false").lower()
-            == "true",
+            multimodal_analysis_enabled=os.getenv("MULTIMODAL_ANALYSIS", "false").lower() == "true",
             multimodal_analysis_provider=cast(
                 Literal["deterministic", "transcript-fallback"],
                 os.getenv("MULTIMODAL_ANALYSIS_PROVIDER", "deterministic"),
